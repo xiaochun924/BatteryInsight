@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDisplayName</key>
+    <string>AUDI-HA</string>
+    <key>CFBundleName</key>
+    <string>AUDI-HA</string>
+    <key>UILaunchScreen</key>
+    <dict/>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <!-- 允许 http 与自签名 https（Home Assistant 常见场景）。生产环境建议改为按域名白名单 -->
+        <key>NSAllowsArbitraryLoads</key>
+        <true/>
+    </dict>
+</dict>
+</plist>

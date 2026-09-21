@@ -1,0 +1,26 @@
+# XcodeGen 工程定义：在根目录执行 `xcodegen generate` 即可生成 .xcodeproj
+name: AUDI-HA-iOS
+options:
+  bundleIdPrefix: com.audi.ha
+  deploymentTarget:
+    iOS: "16.0"
+
+targets:
+  AUDI_HA_iOS:
+    type: application
+    platform: iOS
+    sources:
+      - path: AUDI_HA_iOS
+    info:
+      path: AUDI_HA_iOS/Info.plist
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.audi.ha.AUDI_HA_iOS
+        PRODUCT_NAME: AUDI-HA
+        SWIFT_VERSION: "5.9"
+        MARKETING_VERSION: 1.0
+        CURRENT_PROJECT_VERSION: 1
+        GENERATE_INFOPLIST_FILE: false
+        INFOPLIST_FILE: AUDI_HA_iOS/Info.plist
+        TARGETED_DEVICE_FAMILY: "1,2"
+        DEVELOPMENT_TEAM: ""

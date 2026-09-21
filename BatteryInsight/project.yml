@@ -1,0 +1,27 @@
+# XcodeGen 工程定义：根目录执行 `xcodegen generate` 生成 .xcodeproj
+name: BatteryInsight
+options:
+  bundleIdPrefix: com.audi.battery
+  deploymentTarget:
+    iOS: "16.0"
+
+targets:
+  BatteryInsight:
+    type: application
+    platform: iOS
+    sources:
+      - path: BatteryInsight
+    info:
+      path: BatteryInsight/Info.plist
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.audi.battery.BatteryInsight
+        PRODUCT_NAME: BatteryInsight
+        SWIFT_VERSION: "5.9"
+        MARKETING_VERSION: 1.0
+        CURRENT_PROJECT_VERSION: 1
+        GENERATE_INFOPLIST_FILE: false
+        INFOPLIST_FILE: BatteryInsight/Info.plist
+        TARGETED_DEVICE_FAMILY: "1"
+        # 本 App 主要面向 iPhone
+        DEVELOPMENT_TEAM: ""
