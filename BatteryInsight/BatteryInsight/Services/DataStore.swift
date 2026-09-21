@@ -8,10 +8,12 @@ final class DataStore: ObservableObject {
     @Published private(set) var samples: [BatterySample] = []
     @Published private(set) var sessions: [ChargingSession] = []
     @Published private(set) var healthRecords: [HealthRecord] = []
+    @Published private(set) var analyticsRecords: [AnalyticsRecord] = []
 
-    private let kSamples  = "bi.samples"
-    private let kSessions = "bi.sessions"
-    private let kHealth   = "bi.health"
+    private let kSamples   = "bi.samples"
+    private let kSessions  = "bi.sessions"
+    private let kHealth    = "bi.health"
+    private let kAnalytics = "bi.analytics"
     /// 采样上限，超出后丢弃最旧数据，避免无限增长
     private let sampleCap = 20000
 
@@ -83,13 +85,42 @@ final class DataStore: ObservableObject {
         save()
     }
 
+    // MARK: - 分析日志记录
+
+    /// 合并导入的分析记录：按「日期 + 系统健康度」去重，返回新增条数
+    @discardableResult
+    func mergeAnalytics(_ incoming: [AnalyticsRecord]) -> Int {
+        var existingKeys = Set(analyticsRecords.map(Self.dedupeKey))
+        var added = 0
+        for r in incoming where !existingKeys.contains(Self.dedupeKey(r)) {
+            analyticsRecords.append(r)
+            existingKeys.insert(Self.dedupeKey(r))
+            added += 1
+        }
+        analyticsRecords.sort { $0.date < $1.date }
+        save()
+        return added
+    }
+
+    private static func dedupeKey(_ r: AnalyticsRecord) -> String {
+        // 同一天 + 同一健康度视为重复（同一次采样重复导入）
+        let day = Calendar.current.startOfDay(for: r.date).timeIntervalSince1970
+        return "\(Int(day))-\(r.systemHealthPercent.map { String(format: "%.2f", $0) } ?? "-")-\(r.cycleCount ?? -1)"
+    }
+
+    func deleteAnalyticsRecord(_ r: AnalyticsRecord) {
+        analyticsRecords.removeAll { $0.id == r.id }
+        save()
+    }
+
     // MARK: - 持久化
 
     private func save() {
         let enc = JSONEncoder()
-        if let d = try? enc.encode(samples)       { UserDefaults.standard.set(d, forKey: kSamples) }
-        if let d = try? enc.encode(sessions)      { UserDefaults.standard.set(d, forKey: kSessions) }
-        if let d = try? enc.encode(healthRecords) { UserDefaults.standard.set(d, forKey: kHealth) }
+        if let d = try? enc.encode(samples)         { UserDefaults.standard.set(d, forKey: kSamples) }
+        if let d = try? enc.encode(sessions)        { UserDefaults.standard.set(d, forKey: kSessions) }
+        if let d = try? enc.encode(healthRecords)   { UserDefaults.standard.set(d, forKey: kHealth) }
+        if let d = try? enc.encode(analyticsRecords){ UserDefaults.standard.set(d, forKey: kAnalytics) }
     }
 
     private func load() {
@@ -100,12 +131,15 @@ final class DataStore: ObservableObject {
            let arr = try? dec.decode([ChargingSession].self, from: d) { sessions = arr }
         if let d = UserDefaults.standard.data(forKey: kHealth),
            let arr = try? dec.decode([HealthRecord].self, from: d) { healthRecords = arr }
+        if let d = UserDefaults.standard.data(forKey: kAnalytics),
+           let arr = try? dec.decode([AnalyticsRecord].self, from: d) { analyticsRecords = arr }
     }
 
     func clearAll() {
         samples = []
         sessions = []
         healthRecords = []
+        analyticsRecords = []
         save()
     }
 

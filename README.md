@@ -5,7 +5,7 @@ iOS 项目集合，包含两个 SwiftUI 应用。每次推送到 `main` 会自�
 | 项目 | 说明 | 部署目标 |
 |------|------|---------|
 | [`HA-iOS`](./HA-iOS) | 基于 Home Assistant 的智能家居客户端：连接 HA 实例、设备仪表盘、WebSocket 实时状态、收藏。**iOS 26 液态玻璃 + Swift 6** | iOS 26.0+ |
-| [`BatteryInsight`](./BatteryInsight) | iPhone 电池效率分析：耗电速率、充电会话、健康度衰减追踪、省电建议 | iOS 16.0+ |
+| [`BatteryInsight`](./BatteryInsight) | iPhone 电池效率分析：耗电速率、充电会话、健康度衰减追踪、省电建议，**支持从系统「分析数据」Analytics-*.ips 粘贴导入真实健康度/循环次数** | iOS 16.0+ |
 
 ## 编译状态
 
@@ -29,7 +29,7 @@ cd HA-iOS && xcodegen generate && open HA-iOS.xcodeproj
 ## 说明
 
 - 两个工程均为**源码工程**，需要 macOS + Xcode 才能编译出可安装的 App。
-- `BatteryInsight` 受 iOS 平台限制：第三方 App 无法读取系统「电池健康/最大容量/循环次数」（私有 API，上架会被拒），因此健康度由用户手动录入，电量与充电状态通过 `UIDevice` 合法读取。
+- `BatteryInsight` 受 iOS 平台限制：第三方 App 无法读取系统「电池健康/最大容量/循环次数」（私有 API，上架会被拒），也无权访问系统分析日志目录。因此健康度来自**用户手动导入系统分析数据**（`.analytics` 日志里 iOS 原生写入的 `MaximumCapacityPercent` / `CycleCount` / `NominalChargeCapacity` / `DesignCapacity`），电量与充电状态则通过 `UIDevice` 合法读取。
 - CI 使用模拟器 SDK 且关闭签名，产物为 `.app`，不含签名，无法直接安装到真机。
 
 ## 许可证

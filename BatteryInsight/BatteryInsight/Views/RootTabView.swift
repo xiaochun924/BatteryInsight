@@ -19,6 +19,9 @@ struct RootTabView: View {
             HealthView()
                 .tabItem { Label("健康", systemImage: "heart.fill") }
 
+            AnalyticsView()
+                .tabItem { Label("日志", systemImage: "doc.text.magnifyingglass") }
+
             TipsView()
                 .tabItem { Label("建议", systemImage: "lightbulb.fill") }
         }

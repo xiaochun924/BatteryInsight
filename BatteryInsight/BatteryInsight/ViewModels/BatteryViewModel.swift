@@ -11,7 +11,12 @@ final class BatteryViewModel: ObservableObject {
     @Published var samples: [BatterySample] = []
     @Published var sessions: [ChargingSession] = []
     @Published var healthRecords: [HealthRecord] = []
+    @Published var analyticsRecords: [AnalyticsRecord] = []
     @Published var tips: [BatteryTip] = []
+
+    /// 最近一次日志导入的提示信息（供 UI 展示成功/失败）
+    @Published var importMessage: String?
+    @Published var importSucceeded = false
 
     private let monitor = BatteryMonitor()
     private let store = DataStore.shared
@@ -38,6 +43,7 @@ final class BatteryViewModel: ObservableObject {
         samples = store.samples
         sessions = store.sessions
         healthRecords = store.healthRecords
+        analyticsRecords = store.analyticsRecords
         recalc()
     }
 
@@ -84,6 +90,50 @@ final class BatteryViewModel: ObservableObject {
 
     func deleteHealth(_ record: HealthRecord) {
         store.deleteHealthRecord(record)
+        refresh()
+    }
+
+    // MARK: - 分析日志导入
+
+    /// 最新一条分析记录
+    var latestAnalytics: AnalyticsRecord? {
+        analyticsRecords.max { $0.date < $1.date }
+    }
+
+    /// 最新记录的原生字段指标
+    var nativeMetrics: [DerivedMetric] {
+        guard let r = latestAnalytics else { return [] }
+        return DerivedMetrics.nativeMetrics(from: r)
+    }
+
+    /// 全部记录推导出的衍生指标
+    var derivedMetrics: [DerivedMetric] {
+        DerivedMetrics.make(from: analyticsRecords)
+    }
+
+    /// 解析并导入粘贴的日志文本，返回是否成功
+    @discardableResult
+    func importAnalyticsLog(_ text: String) -> Bool {
+        let result = AnalyticsLogParser.parse(text)
+        guard !result.isEmpty else {
+            importSucceeded = false
+            importMessage = result.summary
+            return false
+        }
+        let added = store.mergeAnalytics(result.records)
+        refresh()
+        importSucceeded = true
+        var msg = "解析出 \(result.records.count) 条记录"
+        msg += added > 0 ? "，新增 \(added) 条" : "，均已存在（无新增）"
+        if !result.warnings.isEmpty {
+            msg += "\n提示：" + result.warnings.joined(separator: "；")
+        }
+        importMessage = msg
+        return true
+    }
+
+    func deleteAnalyticsRecord(_ r: AnalyticsRecord) {
+        store.deleteAnalyticsRecord(r)
         refresh()
     }
 
