@@ -14,11 +14,11 @@ struct EntityDetailView: View {
     var body: some View {
         List {
             Section("状态") {
-                LabeledContent("实体", entity.entityId)
-                LabeledContent("当前状态", stateText)
-                if let u = entity.unit { LabeledContent("单位", u) }
+                LabeledContent("实体", value: entity.entityId)
+                LabeledContent("当前状态", value: stateText)
+                if let u = entity.unit { LabeledContent("单位", value: u) }
                 if let t = entity.lastUpdated {
-                    LabeledContent("更新时间", t.formatted())
+                    LabeledContent("更新时间", value: t.formatted())
                 }
             }
             Section("控制") {
@@ -41,7 +41,8 @@ struct EntityDetailView: View {
                     Text("无").foregroundStyle(.secondary)
                 } else {
                     ForEach(sortedAttributes, id: \.0) { key, value in
-                        LabeledContent(key, value)
+                        // key 为运行时变量，用 content 形式避免 LocalizedStringKey 歧义
+                        LabeledContent(key) { Text(value) }
                     }
                 }
             }

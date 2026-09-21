@@ -16,7 +16,8 @@ final class HAWebSocketController: NSObject, @unchecked Sendable {
     private var session: URLSession?
     private var nextId: Int = 1
     private var onState: (@Sendable (HAEntity) -> Void)?
-    private let queue = DispatchQueue(label: "ha.websocket")
+    // URLSession 的 delegateQueue 要求 OperationQueue，不能用 DispatchQueue
+    private let queue = OperationQueue()
 
     private let decoder: JSONDecoder = {
         let d = JSONDecoder()
@@ -39,6 +40,8 @@ final class HAWebSocketController: NSObject, @unchecked Sendable {
         self.token = settings.token
         self.ignoreSSL = settings.ignoreSSL
         super.init()
+        // 串行队列，保证回调按序处理
+        queue.maxConcurrentOperationCount = 1
     }
 
     /// 建立连接并开始订阅实时事件。

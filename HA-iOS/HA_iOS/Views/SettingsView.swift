@@ -9,7 +9,7 @@ struct SettingsView: View {
             Form {
                 Section("当前连接") {
                     if let s = SettingsStore.shared.settings {
-                        LabeledContent("实例地址", s.baseURL)
+                        LabeledContent("实例地址", value: s.baseURL)
                     }
                     HStack {
                         Text("状态")
@@ -40,7 +40,7 @@ struct SettingsView: View {
                     }
                 }
                 Section("关于") {
-                    LabeledContent("HA-iOS", "v1.0 · Home Assistant 衍生客户端")
+                    LabeledContent("HA-iOS", value: "v1.0 · Home Assistant 衍生客户端")
                 }
             }
             .navigationTitle("设置")
