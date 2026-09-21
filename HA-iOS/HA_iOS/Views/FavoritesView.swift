@@ -8,7 +8,9 @@ struct FavoritesView: View {
         NavigationStack {
             Group {
                 if vm.favorites.isEmpty {
-                    emptyState("还没有收藏", "在设备页把常用设备加入收藏，会显示在这里。", "star")
+                    // iOS 26：原生空态视图
+                    ContentUnavailableView("还没有收藏", systemImage: "star",
+                        description: Text("在设备页把常用设备加入收藏，会显示在这里。"))
                 } else {
                     List {
                         ForEach(vm.favorites) { entity in
@@ -25,22 +27,5 @@ struct FavoritesView: View {
             }
             .navigationTitle("收藏")
         }
-    }
-
-    /// iOS 16 兼容的空状态视图（ContentUnavailableView 需 iOS 17+）
-    @ViewBuilder
-    private func emptyState(_ title: String, _ message: String, _ icon: String) -> some View {
-        VStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 44))
-                .foregroundStyle(.secondary)
-            Text(title).font(.headline)
-            Text(message)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

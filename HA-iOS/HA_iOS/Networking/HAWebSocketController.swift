@@ -7,14 +7,15 @@ import Foundation
 /// 2. 收到 `auth_required` 后发送 `{"type":"auth","access_token":"..."}`
 /// 3. 收到 `auth_ok` 后订阅 `subscribe_events` (event_type=state_changed)
 /// 4. 收到事件后解析 `new_state` 并回调
-final class HAWebSocketController: NSObject {
+// Swift 6：收发均在专用队列与主线程间流转，@unchecked Sendable 声明可跨并发域持有
+final class HAWebSocketController: NSObject, @unchecked Sendable {
     private let baseURL: URL
     private let token: String
     private let ignoreSSL: Bool
     private var task: URLSessionWebSocketTask?
     private var session: URLSession?
     private var nextId: Int = 1
-    private var onState: ((HAEntity) -> Void)?
+    private var onState: (@Sendable (HAEntity) -> Void)?
     private let queue = DispatchQueue(label: "ha.websocket")
 
     private let decoder: JSONDecoder = {
@@ -42,7 +43,7 @@ final class HAWebSocketController: NSObject {
 
     /// 建立连接并开始订阅实时事件。
     /// - Parameter onState: 每当某实体状态变化时，在主线程回调最新实体。
-    func connect(onState: @escaping (HAEntity) -> Void) {
+    func connect(onState: @escaping @Sendable (HAEntity) -> Void) {
         self.onState = onState
         guard var comps = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else { return }
         comps.scheme = (comps.scheme == "https") ? "wss" : "ws"
@@ -104,7 +105,9 @@ final class HAWebSocketController: NSObject {
                   let newState = dataObj["new_state"] as? [String: Any],
                   let entityData = try? JSONSerialization.data(withJSONObject: newState),
                   let entity = try? decoder.decode(HAEntity.self, from: entityData) else { return }
-            DispatchQueue.main.async { self.onState?(entity) }
+            // 取局部副本，避免在 @Sendable 闭包中捕获 self 触发并发检查
+            let callback = self.onState
+            DispatchQueue.main.async { callback?(entity) }
 
         case "auth_invalid":
             print("[HA-WS] 认证失败：令牌无效")

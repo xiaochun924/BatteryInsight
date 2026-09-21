@@ -40,7 +40,7 @@ struct SettingsView: View {
                     }
                 }
                 Section("关于") {
-                    LabeledContent("AUDI-HA", "v1.0 · Home Assistant 衍生客户端")
+                    LabeledContent("HA-iOS", "v1.0 · Home Assistant 衍生客户端")
                 }
             }
             .navigationTitle("设置")

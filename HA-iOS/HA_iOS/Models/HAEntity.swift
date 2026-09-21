@@ -1,7 +1,8 @@
 import Foundation
 
 /// Home Assistant 实体属性值是异构 JSON，这里用 enum 覆盖常见类型。
-enum HAAttributeValue: Decodable, Equatable {
+// Swift 6：值类型跨 actor/任务边界传递需显式声明 Sendable
+enum HAAttributeValue: Decodable, Equatable, Sendable {
     case string(String)
     case number(Double)
     case bool(Bool)
@@ -49,7 +50,7 @@ enum HAAttributeValue: Decodable, Equatable {
 }
 
 /// 对应 HA `/api/states` 返回的单个实体状态对象。
-struct HAEntity: Decodable, Identifiable, Equatable {
+struct HAEntity: Decodable, Identifiable, Equatable, Sendable {
     let entityId: String
     let state: String
     let attributes: [String: HAAttributeValue]

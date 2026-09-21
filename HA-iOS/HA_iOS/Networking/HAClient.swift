@@ -17,7 +17,8 @@ enum HAClientError: LocalizedError {
 }
 
 /// 忽略自签名证书错误的会话代理（仅当设置开启时使用）。
-final class HAURLSessionDelegate: NSObject, URLSessionDelegate {
+// Swift 6：URLSession 代理会跨线程回调，@unchecked Sendable 声明其可安全跨并发域使用
+final class HAURLSessionDelegate: NSObject, URLSessionDelegate, @unchecked Sendable {
     func urlSession(_ session: URLSession,
                     didReceive challenge: URLAuthenticationChallenge,
                     completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {

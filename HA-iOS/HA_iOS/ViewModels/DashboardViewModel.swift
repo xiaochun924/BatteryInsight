@@ -12,7 +12,7 @@ final class DashboardViewModel: ObservableObject {
 
     private var client: HAClient?
     private var ws: HAWebSocketController?
-    private let favoritesKey = "com.audi.ha.favorites"
+    private let favoritesKey = "com.ha.ios.favorites"
 
     /// 按 domain 分组的实体（用于分组列表）
     var grouped: [String: [HAEntity]] {
@@ -94,9 +94,8 @@ final class DashboardViewModel: ObservableObject {
                 try await client.toggle(entity)
                 // 实际状态由 WebSocket 事件刷新
             } catch {
-                await MainActor.run {
-                    self.errorMessage = (error as? HAClientError)?.errorDescription ?? error.localizedDescription
-                }
+                // 本类整体为 @MainActor，Task 继承主 actor 隔离，可直接更新状态
+                self.errorMessage = (error as? HAClientError)?.errorDescription ?? error.localizedDescription
             }
         }
     }
@@ -107,9 +106,7 @@ final class DashboardViewModel: ObservableObject {
             do {
                 try await client.callService(domain: domain, service: service, entityId: entityId)
             } catch {
-                await MainActor.run {
-                    self.errorMessage = (error as? HAClientError)?.errorDescription ?? error.localizedDescription
-                }
+                self.errorMessage = (error as? HAClientError)?.errorDescription ?? error.localizedDescription
             }
         }
     }

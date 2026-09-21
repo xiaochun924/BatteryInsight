@@ -31,6 +31,8 @@ struct ConnectionView: View {
                             Text(testing ? "验证连接中…" : "保存并连接")
                         }
                     }
+                    // iOS 26 液态玻璃主按钮
+                    .buttonStyle(.glassProminent)
                     .disabled(baseURL.isEmpty || token.isEmpty || testing)
                 }
                 Section("如何获取令牌") {

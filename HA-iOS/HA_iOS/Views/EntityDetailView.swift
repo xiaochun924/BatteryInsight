@@ -29,6 +29,8 @@ struct EntityDetailView: View {
                         Label(entity.isOn ? "关闭" : "打开",
                               systemImage: entity.isOn ? "power" : "power.fill")
                     }
+                    // iOS 26 液态玻璃按钮
+                    .buttonStyle(.glass)
                 } else {
                     Text("此实体不支持开关控制")
                         .foregroundStyle(.secondary)

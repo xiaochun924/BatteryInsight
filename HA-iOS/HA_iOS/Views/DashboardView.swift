@@ -7,12 +7,14 @@ struct DashboardView: View {
     var body: some View {
         NavigationStack {
             content
-                .navigationTitle("AUDI-HA")
+                .navigationTitle("HA-iOS")
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button { Task { await vm.loadStates() } } label: {
                             Image(systemName: "arrow.clockwise")
                         }
+                        // iOS 26 液态玻璃按钮
+                        .buttonStyle(.glass)
                         .disabled(vm.isLoading)
                     }
                 }
@@ -30,7 +32,9 @@ struct DashboardView: View {
         if vm.isLoading && vm.entities.isEmpty {
             ProgressView("加载设备…")
         } else if vm.entities.isEmpty {
-            emptyState("没有实体", "连接成功，但此实例暂无可用实体。", "tray")
+            // iOS 26：直接使用原生空态视图（此前为兼容 iOS 16 才自绘）
+            ContentUnavailableView("没有实体", systemImage: "tray",
+                description: Text("连接成功，但此实例暂无可用实体。"))
         } else {
             List {
                 ForEach(vm.domainOrder, id: \.self) { domain in
@@ -55,22 +59,5 @@ struct DashboardView: View {
                 EntityRowView(entity: entity)
             }
         }
-    }
-
-    /// iOS 16 兼容的空状态视图（ContentUnavailableView 需 iOS 17+）
-    @ViewBuilder
-    private func emptyState(_ title: String, _ message: String, _ icon: String) -> some View {
-        VStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 44))
-                .foregroundStyle(.secondary)
-            Text(title).font(.headline)
-            Text(message)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

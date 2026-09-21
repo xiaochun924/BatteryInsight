@@ -9,8 +9,10 @@ struct EntityRowView: View {
         HStack(spacing: 12) {
             Image(systemName: entity.iconName)
                 .foregroundStyle(entity.isOn ? Color.accentColor : Color.secondary)
-                .frame(width: 26, height: 26)
+                .frame(width: 34, height: 34)
                 .font(.title3)
+                // iOS 26 液态玻璃底座
+                .glassEffect(.regular, in: .circle)
             VStack(alignment: .leading, spacing: 2) {
                 Text(entity.friendlyName).lineLimit(1)
                 Text(stateSummary)

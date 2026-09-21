@@ -4,7 +4,7 @@ iOS 项目集合，包含两个 SwiftUI 应用。每次推送到 `main` 会自�
 
 | 项目 | 说明 | 部署目标 |
 |------|------|---------|
-| [`AUDI-HA-iOS`](./AUDI-HA-iOS) | 基于 Home Assistant 的智能家居客户端：连接 HA 实例、设备仪表盘、WebSocket 实时状态、收藏 | iOS 16.0+ |
+| [`HA-iOS`](./HA-iOS) | 基于 Home Assistant 的智能家居客户端：连接 HA 实例、设备仪表盘、WebSocket 实时状态、收藏。**iOS 26 液态玻璃 + Swift 6** | iOS 26.0+ |
 | [`BatteryInsight`](./BatteryInsight) | iPhone 电池效率分析：耗电速率、充电会话、健康度衰减追踪、省电建议 | iOS 16.0+ |
 
 ## 编译状态
@@ -18,7 +18,7 @@ iOS 项目集合，包含两个 SwiftUI 应用。每次推送到 `main` 会自�
 ```bash
 # 方式一：XcodeGen（推荐）
 brew install xcodegen
-cd AUDI-HA-iOS && xcodegen generate && open AUDI-HA-iOS.xcodeproj
+cd HA-iOS && xcodegen generate && open HA-iOS.xcodeproj
 
 # 方式二：直接用 Xcode 模板
 # 新建 iOS App 模板 → 删除 ContentView.swift → 把 <项目>/<项目>/ 下的 .swift 按目录拖入 → Run

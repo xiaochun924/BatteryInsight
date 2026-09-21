@@ -2,7 +2,7 @@ import SwiftUI
 
 extension Notification.Name {
     /// 在设置页点击「断开并清除配置」后发出，用于切回连接页
-    static let haDidDisconnect = Notification.Name("com.audi.ha.didDisconnect")
+    static let haDidDisconnect = Notification.Name("com.ha.ios.didDisconnect")
 }
 
 /// 应用根视图：根据是否已配置连接，决定展示连接页还是主仪表盘。
