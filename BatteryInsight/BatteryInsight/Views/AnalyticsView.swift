@@ -24,8 +24,7 @@ struct AnalyticsView: View {
     @State private var showingImport = false
     @State private var showingRawLog: AnalyticsRecord?
     @State private var showingGuide = false
-    /// 空态页直接选文件用。注意：**在已有 sheet 覆盖时**外层视图的
-    /// `.fileImporter` 会被静默忽略，所以导入弹窗内部另有一份（见 AnalyticsImportSheet）。
+    /// 空态页直接选文件用。导入弹窗内部另有一份（见 AnalyticsImportSheet）
     @State private var showingFileImporter = false
 
     var body: some View {
@@ -77,17 +76,14 @@ struct AnalyticsView: View {
                         }
                 }
             }
-            .fileImporter(
-                isPresented: $showingFileImporter,
-                allowedContentTypes: AnalyticsFileImporter.allowedContentTypes,
-                allowsMultipleSelection: true
-            ) { result in
-                // 取消选择属于正常操作，静默返回，不打扰用户
-                guard case .success(let urls) = result else { return }
-                let report = vm.importAnalyticsFiles(urls)
-                if !report.succeeded {
-                    // 失败时打开导入页，借用其中的结果区展示逐文件原因
-                    showingImport = true
+            // 用 UIKit 选择器而非 .fileImporter：后者在真机 iPhone 上点了文件选不中
+            // 也不关闭（见 DocumentPicker.swift 的说明）
+            .sheet(isPresented: $showingFileImporter) {
+                DocumentPicker(contentTypes: AnalyticsFileImporter.allowedContentTypes,
+                               allowsMultipleSelection: true) { urls in
+                    let report = vm.importAnalyticsFiles(urls)
+                    // 读到了文件但没解析出电池数据时，打开导入页展示逐文件原因
+                    if !report.succeeded { showingImport = true }
                 }
             }
         }
@@ -402,15 +398,12 @@ private struct AnalyticsImportSheet: View {
                     Button("关闭") { isPresented = false }
                 }
             }
-            // 挂在本 sheet 的 NavigationStack 内，才能在 sheet 之上正常弹出
-            .fileImporter(
-                isPresented: $showingFileImporter,
-                allowedContentTypes: AnalyticsFileImporter.allowedContentTypes,
-                allowsMultipleSelection: true
-            ) { result in
-                guard case .success(let urls) = result else { return }
-                // 结果直接写进 vm.importMessage，由上面的「解析结果」区展示
-                _ = vm.importAnalyticsFiles(urls)
+            .sheet(isPresented: $showingFileImporter) {
+                DocumentPicker(contentTypes: AnalyticsFileImporter.allowedContentTypes,
+                               allowsMultipleSelection: true) { urls in
+                    // 结果直接写进 vm.importMessage，由上面的「解析结果」区展示
+                    _ = vm.importAnalyticsFiles(urls)
+                }
             }
         }
     }
