@@ -38,6 +38,7 @@ enum AnalyticsLogParser {
         var records: [AnalyticsRecord] = []
 
         // —— 主路径：结构化解析
+        var candidateKeys = Set<String>()
         if !objects.isEmpty {
             result.entriesFound = objects.count
             var carryDate: Date?
@@ -47,6 +48,8 @@ enum AnalyticsLogParser {
                 if let d = extractDate(from: object) { carryDate = d }
                 if let r = record(from: object, fallbackDate: carryDate, raw: raw) {
                     records.append(r)
+                } else {
+                    collectBatteryishKeys(in: object, into: &candidateKeys)
                 }
             }
         }
@@ -77,6 +80,13 @@ enum AnalyticsLogParser {
             result.warnings.append(
                 "未识别到电池字段。请确认导入的是「分析数据」中 Analytics-*.ips 文件的内容，"
                 + "且包含 batteryhealth 段落。")
+            if !candidateKeys.isEmpty {
+                // 把日志里真实存在的键报出来：键名因机型/系统版本而异，
+                // 有了这份清单就能直接补映射，不用猜
+                let list = candidateKeys.sorted().prefix(40).joined(separator: "、")
+                result.warnings.append("日志中发现这些疑似电池相关的键：\(list)。"
+                                       + "若确实有电池数据却解析不出，请把这一段发给开发者补齐键名映射。")
+            }
         } else if records.count == 1 && result.entriesFound > 1 {
             result.warnings.append("多条日志中仅 1 条含电池数据，通常属正常（该段落非每次采样都写入）")
         }
@@ -87,44 +97,72 @@ enum AnalyticsLogParser {
     // MARK: - 顶层 JSON 对象切分
 
     /// 按花括号配平切出顶层 JSON 对象，正确处理字符串内的 `{` `}` 与转义。
+    ///
+    /// 走 UTF-8 字节而不是 `String.indices`：几十 MB 的日志按 Character 遍历
+    /// 会慢到十几秒（界面就是这么"黑屏"的），字节扫描快一个数量级。
     private static func topLevelJSONObjects(in text: String) -> [String] {
+        let bytes = Array(text.utf8)
+        let quote = UInt8(ascii: "\"")
+        let backslash = UInt8(ascii: "\\")
+        let open = UInt8(ascii: "{")
+        let close = UInt8(ascii: "}")
+
         var out: [String] = []
         var depth = 0
-        var start: String.Index?
+        var start: Int?
         var inString = false
         var escaped = false
 
-        for idx in text.indices {
-            let c = text[idx]
+        for i in 0..<bytes.count {
+            let c = bytes[i]
             if inString {
                 if escaped {
                     escaped = false
-                } else if c == "\\" {
+                } else if c == backslash {
                     escaped = true
-                } else if c == "\"" {
+                } else if c == quote {
                     inString = false
                 }
                 continue
             }
-            switch c {
-            case "\"":
+            if c == quote {
                 inString = true
-            case "{":
-                if depth == 0 { start = idx }
+            } else if c == open {
+                if depth == 0 { start = i }
                 depth += 1
-            case "}":
+            } else if c == close {
                 depth -= 1
                 if depth <= 0, let s = start {
-                    let piece = String(text[s...idx])
-                    if piece.count >= 2 { out.append(piece) }
+                    if i - s + 1 >= 2,
+                       let piece = String(bytes: bytes[s...i], encoding: .utf8) {
+                        out.append(piece)
+                    }
                     start = nil
                     depth = 0
                 }
-            default:
-                break
             }
         }
         return out
+    }
+
+    /// 解析不出记录时，收集"看起来跟电池有关"的键名用于诊断。
+    /// 只收集名字里带 battery / capacity / cycle / charge / health 的键，
+    /// 顺带把这类对象内部的键也一并收进来（电池数据常包在某个容器里）。
+    private static func collectBatteryishKeys(in object: [String: Any],
+                                              into out: inout Set<String>,
+                                              depth: Int = 0) {
+        guard depth <= 2 else { return }
+        for (key, value) in object {
+            let lower = key.lowercased()
+            let looksBattery = ["battery", "capacity", "cycle", "charge", "health"]
+                .contains { lower.contains($0) }
+            if !looksBattery { continue }
+            out.insert(key)
+            if let nested = value as? [String: Any] {
+                for sub in nested.keys where out.count < 80 { out.insert("\(key).\(sub)") }
+                collectBatteryishKeys(in: nested, into: &out, depth: depth + 1)
+            }
+        }
     }
 
     private static func dictionary(from raw: String) -> [String: Any]? {
@@ -159,10 +197,20 @@ enum AnalyticsLogParser {
         return nil
     }
 
+    /// 判断某个对象本身是不是电池对象（即没有 `batteryhealth` 包裹的情况）。
+    ///
+    /// 只用**核心字段**判断：Voltage / Temperature 这类名字太通用，
+    /// 日志里的温控、功耗段落也有，会把无关对象误判成电池记录，
+    /// 生成一堆只有温度、没有健康度的垃圾数据。
     private static func hasBatteryKey(_ object: [String: Any]) -> Bool {
         object.keys.contains { key in
-            knownKeys.contains { $0.caseInsensitiveCompare(key) == .orderedSame }
+            coreBatteryKeys.contains { $0.caseInsensitiveCompare(key) == .orderedSame }
         }
+    }
+
+    /// 只有这些字段能证明"这是电池数据"
+    private static var coreBatteryKeys: [String] {
+        healthKeys + cycleKeys + nominalKeys + designKeys
     }
 
     // MARK: - 字段定义
@@ -463,17 +511,22 @@ enum AnalyticsLogParser {
 
     // MARK: - 时间解析
 
-    /// 支持 .ips 首行的 `2026-09-19 10:23:45.6780 +0800`、ISO8601、`2026-09-19 10:23:45` 等
+    /// 支持 .ips 首行的 `2026-09-19 10:23:45.00 +0800`、ISO8601、`2026-09-19 10:23:45` 等。
+    ///
+    /// ⚠️ 小数秒位数在不同 iOS 版本上是 1~6 位都有（实测 `08:00:08.00 +0800` 是两位），
+    /// 只写死 `.SSSS` / `.SSSSSS` 会全部匹配失败 → 日期回退成"导入时刻"，
+    /// 所有记录挤在同一秒，去重后只剩 1 条，趋势图直接废掉。
     private static let dateFormatters: [DateFormatter] = {
-        let patterns = [
-            "yyyy-MM-dd HH:mm:ss.SSSSZ",
-            "yyyy-MM-dd HH:mm:ss.SSSSSSZ",
-            "yyyy-MM-dd HH:mm:ssZ",
-            "yyyy-MM-dd HH:mm:ss",
-            "yyyy-MM-dd'T'HH:mm:ss.SSSSZ",
-            "yyyy-MM-dd'T'HH:mm:ssZ",
-            "yyyy-MM-dd"
-        ]
+        let fractions = ["", ".S", ".SS", ".SSS", ".SSSS", ".SSSSS", ".SSSSSS"]
+        let zones = ["Z", ""]
+        var patterns: [String] = []
+        for f in fractions {
+            for z in zones {
+                patterns.append("yyyy-MM-dd HH:mm:ss\(f)\(z)")
+                patterns.append("yyyy-MM-dd'T'HH:mm:ss\(f)\(z)")
+            }
+        }
+        patterns.append("yyyy-MM-dd")
         return patterns.map { p in
             let f = DateFormatter()
             f.locale = Locale(identifier: "en_US_POSIX")
@@ -485,13 +538,63 @@ enum AnalyticsLogParser {
 
     private static func parseDateString(_ s: String) -> Date? {
         let cleaned = s.trimmingCharacters(in: .whitespacesAndNewlines)
-        for f in dateFormatters {
-            if let d = f.date(from: cleaned) { return d }
-        }
+        guard !cleaned.isEmpty else { return nil }
+
+        // 1) ISO8601（含 / 不含小数秒）
         let iso = ISO8601DateFormatter()
         iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         if let d = iso.date(from: cleaned) { return d }
         iso.formatOptions = [.withInternetDateTime]
-        return iso.date(from: cleaned)
+        if let d = iso.date(from: cleaned) { return d }
+
+        // 2) 多格式 DateFormatter
+        for f in dateFormatters {
+            if let d = f.date(from: cleaned) { return d }
+        }
+
+        // 3) 手写兜底：不依赖位数，直接抓数字
+        return manualDate(cleaned)
+    }
+
+    /// 手写解析 `YYYY-MM-DD[ T]HH:MM[:SS][.fraction][ Z|+0800]`，秒、小数、时区都可选
+    private static func manualDate(_ s: String) -> Date? {
+        let pattern = "(\\d{4})-(\\d{2})-(\\d{2})[ T](\\d{2}):(\\d{2})(?::(\\d{2}))?"
+            + "(?:\\.(\\d+))?\\s*(?:(Z)|([+-])(\\d{2}):?(\\d{2}))?"
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let m = regex.firstMatch(in: s, range: NSRange(location: 0, length: (s as NSString).length))
+        else { return nil }
+
+        func int(_ i: Int) -> Int? {
+            let r = m.range(at: i)
+            guard r.location != NSNotFound, let range = Range(r, in: s) else { return nil }
+            return Int(s[range])
+        }
+        func str(_ i: Int) -> String? {
+            let r = m.range(at: i)
+            guard r.location != NSNotFound, let range = Range(r, in: s) else { return nil }
+            return String(s[range])
+        }
+
+        guard let year = int(1), let month = int(2), let day = int(3),
+              let hour = int(4), let minute = int(5) else { return nil }
+        let second = int(6) ?? 0
+
+        var offset = TimeZone.current.secondsFromGMT()
+        if str(8) != nil {
+            offset = 0                // Z
+        } else if let sign = str(9), let th = int(10), let tm = int(11) {
+            offset = (sign == "-" ? -1 : 1) * (th * 3600 + tm * 60)
+        }
+
+        var comps = DateComponents()
+        comps.calendar = Calendar(identifier: .gregorian)
+        comps.timeZone = TimeZone(secondsFromGMT: offset)
+        comps.year = year
+        comps.month = month
+        comps.day = day
+        comps.hour = hour
+        comps.minute = minute
+        comps.second = second
+        return comps.date
     }
 }
