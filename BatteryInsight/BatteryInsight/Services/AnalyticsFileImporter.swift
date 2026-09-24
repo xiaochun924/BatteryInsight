@@ -13,7 +13,7 @@ import UniformTypeIdentifiers
 /// 文件读取失败原因。
 /// Swift 的 `Result` 要求 Failure 遵循 `Error`，而 `String` 并不遵循该协议，
 /// 因此用一个包装类型承载可直接展示的中文消息。
-struct AnalyticsFileError: Error, LocalizedError {
+struct AnalyticsFileError: Error, LocalizedError, Sendable {
     let message: String
     var errorDescription: String? { message }
 }
