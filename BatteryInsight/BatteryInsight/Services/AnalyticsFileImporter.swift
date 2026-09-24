@@ -29,8 +29,12 @@ enum AnalyticsFileImporter {
         return candidates.filter { seen.insert($0.identifier).inserted }
     }()
 
-    /// 单文件读取上限。分析日志通常几百 KB，20 MB 足以覆盖异常大的导出文件。
-    private static let maxBytes = 20 * 1024 * 1024
+    /// 单文件读取上限。
+    /// 实测系统「分析数据」里攒了几个月的 `Analytics-*.ips` 可以到几十 MB
+    /// （用户设备上出现过 28 MB 的），之前定的 20 MB 会把正常日志挡在门外。
+    /// 放宽到 512 MB：这已经远超任何真实日志，只用来拦明显选错的文件（如视频）；
+    /// .ips 是纯文本，整份读入内存对这个量级没有压力。
+    private static let maxBytes = 512 * 1024 * 1024
 
     // MARK: - 读取
 
