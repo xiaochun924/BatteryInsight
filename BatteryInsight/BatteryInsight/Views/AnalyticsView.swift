@@ -2,6 +2,13 @@ import SwiftUI
 import Charts
 import UIKit
 
+/// 容量趋势图上的一个数据点
+private struct HealthPoint: Identifiable {
+    let id = UUID()
+    let date: Date
+    let pct: Double
+}
+
 /// 分析日志页：导入 iOS「分析数据」中的 Analytics 日志 → 解析 → 分区块展示。
 ///
 /// 两种导入方式：
@@ -11,20 +18,14 @@ import UIKit
 /// 两个区块刻意分开：
 /// - **原生字段**：iOS 日志里实际写入的值，可信度高
 /// - **衍生指标**：由原生字段推算，口径因 App 而异，故同时展示计算公式
-/// 容量趋势图上的一个数据点
-private struct HealthPoint: Identifiable {
-    let id = UUID()
-    let date: Date
-    let pct: Double
-}
-
 struct AnalyticsView: View {
     @EnvironmentObject private var vm: BatteryViewModel
 
     @State private var showingImport = false
-    @State private var pasteText = ""
     @State private var showingRawLog: AnalyticsRecord?
     @State private var showingGuide = false
+    /// 空态页直接选文件用。注意：**在已有 sheet 覆盖时**外层视图的
+    /// `.fileImporter` 会被静默忽略，所以导入弹窗内部另有一份（见 AnalyticsImportSheet）。
     @State private var showingFileImporter = false
 
     var body: some View {
@@ -62,10 +63,20 @@ struct AnalyticsView: View {
                     }
                 }
             }
-            .sheet(isPresented: $showingImport) { importSheet }
+            .sheet(isPresented: $showingImport) {
+                AnalyticsImportSheet(isPresented: $showingImport)
+            }
             .sheet(item: $showingRawLog) { record in rawSheet(record) }
-            .sheet(isPresented: $showingGuide) { guideSheet }
-            // 系统文档选择器：读取「文件」App / 隔空投送 / 云盘里的日志
+            .sheet(isPresented: $showingGuide) {
+                NavigationStack {
+                    AnalyticsGuideContent()
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("关闭") { showingGuide = false }
+                            }
+                        }
+                }
+            }
             .fileImporter(
                 isPresented: $showingFileImporter,
                 allowedContentTypes: AnalyticsFileImporter.allowedContentTypes,
@@ -116,7 +127,9 @@ struct AnalyticsView: View {
         } header: {
             Label("系统原生数据", systemImage: "checkmark.seal.fill")
         } footer: {
-            Text("由 iOS 直接写入分析日志，未经任何推算，可信度高。")
+            Text("由 iOS 直接写入分析日志，未经任何推算，可信度高。\n"
+                 + "带原始键名的条目（如 AppleRawMaxCapacity、Qmax）是 batteryhealth 中其余数值字段，"
+                 + "苹果未公开其含义，这里只原样呈现，不做解读。")
         }
     }
 
@@ -239,9 +252,80 @@ struct AnalyticsView: View {
         }
     }
 
-    // MARK: - 导入弹窗
+    // MARK: - 原始日志
 
-    private var importSheet: some View {
+    private func rawSheet(_ r: AnalyticsRecord) -> some View {
+        NavigationStack {
+            ScrollView {
+                Text(r.rawSnippet.isEmpty ? "（无原始片段）" : r.rawSnippet)
+                    .font(.system(.caption2, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+            }
+            .navigationTitle("原始日志片段")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("关闭") { showingRawLog = nil }
+                }
+            }
+        }
+    }
+
+    // MARK: - 空态
+
+    private var emptyState: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "doc.text.magnifyingglass")
+                .font(.largeTitle)
+                .foregroundStyle(.secondary)
+            Text("还没有导入分析日志").font(.headline)
+            Text("iOS 的「分析数据」里保存着系统写入的电池健康原始记录，\n包含系统健康度、循环次数、实际容量等。\n\n由于系统限制，本 App 无法自动读取，需要你导出后导入。")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            HStack(spacing: 10) {
+                Button {
+                    showingFileImporter = true
+                } label: {
+                    Label("选择文件", systemImage: "folder.badge.plus")
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button {
+                    showingImport = true
+                } label: {
+                    Label("粘贴文本", systemImage: "square.and.arrow.down")
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    showingGuide = true
+                } label: {
+                    Label("怎么找", systemImage: "questionmark.circle")
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// MARK: - 导入弹窗
+
+/// 独立成一个 View，是为了让文档选择器挂在**本 sheet 自己的视图层级**里。
+/// 之前 `.fileImporter` 挂在外层 NavigationStack 上，而按钮又在 sheet 内 ——
+/// sheet 已经占据了展示层级，外层再弹选择器会被 SwiftUI 静默忽略（点了没反应）。
+private struct AnalyticsImportSheet: View {
+    @EnvironmentObject private var vm: BatteryViewModel
+    @Binding var isPresented: Bool
+
+    @State private var pasteText = ""
+    @State private var showingFileImporter = false
+
+    var body: some View {
         NavigationStack {
             Form {
                 Section {
@@ -252,6 +336,12 @@ struct AnalyticsView: View {
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
+
+                    NavigationLink {
+                        AnalyticsGuideContent()
+                    } label: {
+                        Label("怎么找到这些日志？", systemImage: "questionmark.circle")
+                    }
                 } header: {
                     Text("方式一：从文件导入（推荐）")
                 } footer: {
@@ -260,7 +350,7 @@ struct AnalyticsView: View {
 
                 Section {
                     TextEditor(text: $pasteText)
-                        .frame(minHeight: 220)
+                        .frame(minHeight: 200)
                         .font(.system(.caption, design: .monospaced))
                         .overlay(alignment: .topLeading) {
                             if pasteText.isEmpty {
@@ -303,77 +393,56 @@ struct AnalyticsView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(pasteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-                    Button {
-                        showingImport = false
-                        showingGuide = true
-                    } label: {
-                        Label("怎么找到这些日志？", systemImage: "questionmark.circle")
-                    }
                 }
             }
             .navigationTitle("导入分析日志")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("关闭") { showingImport = false }
+                    Button("关闭") { isPresented = false }
                 }
+            }
+            // 挂在本 sheet 的 NavigationStack 内，才能在 sheet 之上正常弹出
+            .fileImporter(
+                isPresented: $showingFileImporter,
+                allowedContentTypes: AnalyticsFileImporter.allowedContentTypes,
+                allowsMultipleSelection: true
+            ) { result in
+                guard case .success(let urls) = result else { return }
+                // 结果直接写进 vm.importMessage，由上面的「解析结果」区展示
+                _ = vm.importAnalyticsFiles(urls)
             }
         }
     }
+}
 
-    // MARK: - 原始日志
+// MARK: - 获取指引
 
-    private func rawSheet(_ r: AnalyticsRecord) -> some View {
-        NavigationStack {
-            ScrollView {
-                Text(r.rawSnippet.isEmpty ? "（无原始片段）" : r.rawSnippet)
-                    .font(.system(.caption2, design: .monospaced))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
-            }
-            .navigationTitle("原始日志片段")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("关闭") { showingRawLog = nil }
+/// 指引内容独立出来：在导入弹窗里以 push 方式进入（sheet 上再弹 sheet 同样会被忽略），
+/// 在列表页则以 sheet 方式呈现。
+private struct AnalyticsGuideContent: View {
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                step("1", "打开分析数据", "设置 → 隐私与安全性 → 分析与改进 → 分析数据")
+                step("2", "找到日志文件", "列表里找以 Analytics- 开头的 .ips 文件（如 Analytics-2026-09-19-100000.ips），按日期排序，选最新的一条")
+                step("3", "存到「文件」App（推荐）", "点开文件 → 右上角分享 → 「存储到文件」，挑个位置存下。多存几个不同日期的，趋势图才有意义")
+                step("4", "回到本 App 导入", "点右上角导入按钮 → 「选择日志文件」→ 选中刚才存的文件。也可以在第 3 步直接全选复制文本，走「粘贴文本」")
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("说明", systemImage: "info.circle").font(.headline)
+                    Text("本 App 无法直接读取系统分析日志目录（iOS 沙箱限制，第三方 App 无权限访问）。因此需要你先导出到「文件」App，再由你授权后导入。")
+                    Text("日志中的 batteryhealth 段落并非每次采样都写入，通常几小时到一天出现一次，所以导入多条才能看到趋势。")
                 }
+                .font(.footnote)
+                .foregroundStyle(.secondary)
             }
+            .padding()
         }
-    }
-
-    // MARK: - 指引
-
-    private var guideSheet: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    step("1", "打开分析数据", "设置 → 隐私与安全性 → 分析与改进 → 分析数据")
-                    step("2", "找到日志文件", "列表里找以 Analytics- 开头的 .ips 文件（如 Analytics-2026-09-19-100000.ips），按日期排序，选最新的一条")
-                    step("3", "存到「文件」App（推荐）", "点开文件 → 右上角分享 → 「存储到文件」，挑个位置存下。多存几个不同日期的，趋势图才有意义")
-                    step("4", "回到本 App 导入", "点右上角导入按钮 → 「选择日志文件」→ 选中刚才存的文件。也可以在第 3 步直接全选复制文本，走「粘贴文本」")
-
-                    Divider()
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        Label("说明", systemImage: "info.circle").font(.headline)
-                        Text("本 App 无法直接读取系统分析日志目录（iOS 沙箱限制，第三方 App 无权限访问）。因此需要你先导出到「文件」App，再由你授权后导入。")
-                        Text("日志中的 batteryhealth 段落并非每次采样都写入，通常几小时到一天出现一次，所以导入多条才能看到趋势。")
-                    }
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                }
-                .padding()
-            }
-            .navigationTitle("如何获取日志")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("关闭") { showingGuide = false }
-                }
-            }
-        }
+        .navigationTitle("如何获取日志")
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     private func step(_ n: String, _ title: String, _ detail: String) -> some View {
@@ -387,44 +456,5 @@ struct AnalyticsView: View {
                 Text(detail).font(.footnote).foregroundStyle(.secondary)
             }
         }
-    }
-
-    // MARK: - 空态
-
-    private var emptyState: some View {
-        VStack(spacing: 14) {
-            Image(systemName: "doc.text.magnifyingglass")
-                .font(.largeTitle)
-                .foregroundStyle(.secondary)
-            Text("还没有导入分析日志").font(.headline)
-            Text("iOS 的「分析数据」里保存着系统写入的电池健康原始记录，\n包含系统健康度、循环次数、实际容量等。\n\n由于系统限制，本 App 无法自动读取，需要你导出后导入。")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-            HStack(spacing: 10) {
-                Button {
-                    showingFileImporter = true
-                } label: {
-                    Label("选择文件", systemImage: "folder.badge.plus")
-                }
-                .buttonStyle(.borderedProminent)
-
-                Button {
-                    showingImport = true
-                } label: {
-                    Label("粘贴文本", systemImage: "square.and.arrow.down")
-                }
-                .buttonStyle(.bordered)
-
-                Button {
-                    showingGuide = true
-                } label: {
-                    Label("怎么找", systemImage: "questionmark.circle")
-                }
-                .buttonStyle(.bordered)
-            }
-        }
-        .padding()
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

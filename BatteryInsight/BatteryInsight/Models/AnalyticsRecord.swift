@@ -24,6 +24,12 @@ struct AnalyticsRecord: Codable, Identifiable, Equatable {
     let temperature: Double?
     /// 原始日志片段（便于回溯核对，最多保留 4000 字符）
     let rawSnippet: String
+    /// `batteryhealth` 里其余未单独建模的数值字段，例如
+    /// AppleRawMaxCapacity、AppleRawNominalCapacity、Qmax、WeightedRa、PresentDOD 等。
+    ///
+    /// 不同机型 / 系统版本写入的字段集合本就不一样，这里「系统写什么就存什么」，
+    /// 既不臆造含义，也不因为没建模而丢数据。
+    var extraFields: [String: Double]
 
     init(id: UUID = UUID(),
          date: Date,
@@ -33,7 +39,8 @@ struct AnalyticsRecord: Codable, Identifiable, Equatable {
          designCapacity: Int? = nil,
          voltage: Double? = nil,
          temperature: Double? = nil,
-         rawSnippet: String = "") {
+         rawSnippet: String = "",
+         extraFields: [String: Double] = [:]) {
         self.id = id
         self.date = date
         self.systemHealthPercent = systemHealthPercent
@@ -43,6 +50,29 @@ struct AnalyticsRecord: Codable, Identifiable, Equatable {
         self.voltage = voltage
         self.temperature = temperature
         self.rawSnippet = rawSnippet
+        self.extraFields = extraFields
+    }
+
+    // MARK: - Codable
+
+    // 自定义解码只为兼容旧版本已落盘的数据（当时还没有 extraFields）
+    private enum CodingKeys: String, CodingKey {
+        case id, date, systemHealthPercent, cycleCount, nominalChargeCapacity,
+             designCapacity, voltage, temperature, rawSnippet, extraFields
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? c.decode(UUID.self, forKey: .id)) ?? UUID()
+        date = (try? c.decode(Date.self, forKey: .date)) ?? Date()
+        systemHealthPercent = try? c.decode(Double.self, forKey: .systemHealthPercent)
+        cycleCount = try? c.decode(Int.self, forKey: .cycleCount)
+        nominalChargeCapacity = try? c.decode(Int.self, forKey: .nominalChargeCapacity)
+        designCapacity = try? c.decode(Int.self, forKey: .designCapacity)
+        voltage = try? c.decode(Double.self, forKey: .voltage)
+        temperature = try? c.decode(Double.self, forKey: .temperature)
+        rawSnippet = (try? c.decode(String.self, forKey: .rawSnippet)) ?? ""
+        extraFields = (try? c.decode([String: Double].self, forKey: .extraFields)) ?? [:]
     }
 
     var dateText: String {
@@ -54,6 +84,13 @@ struct AnalyticsRecord: Codable, Identifiable, Equatable {
         systemHealthPercent != nil || cycleCount != nil
             || nominalChargeCapacity != nil || designCapacity != nil
             || voltage != nil || temperature != nil
+            || !extraFields.isEmpty
+    }
+
+    /// 额外字段按名称排序，便于稳定展示
+    var sortedExtraFields: [(key: String, value: Double)] {
+        extraFields.map { (key: $0.key, value: $0.value) }
+            .sorted { $0.key.localizedCaseInsensitiveCompare($1.key) == .orderedAscending }
     }
 }
 

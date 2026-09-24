@@ -235,6 +235,28 @@ enum DerivedMetrics {
                 formula: "iOS 直接写入（Temperature）",
                 basis: "日志原生字段"))
         }
+        out.append(contentsOf: extraFieldMetrics(from: record))
         return out
+    }
+
+    /// `batteryhealth` 里其余未单独建模的数值字段。
+    /// 原样展示系统写入的键名与数值，**不解释含义**——这些字段苹果未公开文档，
+    /// 任何"解读"都是猜测，交给用户自行判断。
+    static func extraFieldMetrics(from record: AnalyticsRecord) -> [DerivedMetric] {
+        record.sortedExtraFields.map { field in
+            DerivedMetric(
+                title: field.key,
+                value: format(field.value),
+                unit: "",
+                icon: "number",
+                formula: "iOS 直接写入（batteryhealth.\(field.key)）",
+                basis: "原生字段，含义未公开")
+        }
+    }
+
+    private static func format(_ v: Double) -> String {
+        // 整数值不带小数点，小数保留 3 位，避免 4906.000000 这种噪音
+        if v == v.rounded(), abs(v) < 1e15 { return String(Int(v)) }
+        return String(format: "%.3f", v)
     }
 }
