@@ -4,7 +4,7 @@ import SwiftUI
 /// 一次分析日志导入的汇总结果。
 /// 之所以单独建模而不是只回传 Bool：批量导入时「几个文件成功、几个失败、
 /// 几条重复」都需要如实告诉用户，否则静默丢数据会让人以为导入成功了。
-struct AnalyticsImportReport {
+struct AnalyticsImportReport: Sendable {
     /// 用户选择的文件数
     var fileCount: Int = 0
     /// 成功读取的文件数
@@ -58,6 +58,10 @@ final class BatteryViewModel: ObservableObject {
     /// 最近一次日志导入的提示信息（供 UI 展示成功/失败）
     @Published var importMessage: String?
     @Published var importSucceeded = false
+    /// 正在导入/解析。几十 MB 的日志解析要几秒，不挪到后台会把界面卡成黑屏
+    @Published var isImporting = false
+    /// 当前阶段文案，配合上面的转圈动画显示
+    @Published var importStage: String?
 
     private let monitor = BatteryMonitor()
     private let store = DataStore.shared
@@ -152,10 +156,20 @@ final class BatteryViewModel: ObservableObject {
         DerivedMetrics.make(from: analyticsRecords)
     }
 
-    /// 解析并导入粘贴的日志文本，返回是否成功
+    /// 解析并导入粘贴的日志文本，返回是否成功。
+    ///
+    /// 解析放在后台线程：几十 MB 的日志在主线程解析要几秒，界面会直接卡成黑屏，
+    /// 期间由 `isImporting` 驱动转圈动画。
     @discardableResult
-    func importAnalyticsLog(_ text: String) -> Bool {
-        let result = AnalyticsLogParser.parse(text)
+    func importAnalyticsLog(_ text: String) async -> Bool {
+        isImporting = true
+        importStage = "正在解析…"
+        defer { isImporting = false; importStage = nil }
+
+        let result = await Task.detached(priority: .userInitiated) {
+            AnalyticsLogParser.parse(text)
+        }.value
+
         guard !result.isEmpty else {
             importSucceeded = false
             importMessage = result.summary
@@ -178,34 +192,56 @@ final class BatteryViewModel: ObservableObject {
     /// 逐个文件读取并解析：单个文件读取失败（非文本 / 过大 / 无权限）只记入
     /// `report.failures`，不影响其余文件，最后一次性合并入库。
     @discardableResult
-    func importAnalyticsFiles(_ urls: [URL]) -> AnalyticsImportReport {
-        var report = AnalyticsImportReport(fileCount: urls.count)
-        var records: [AnalyticsRecord] = []
-        var warnings: [String] = []
+    func importAnalyticsFiles(_ urls: [URL]) async -> AnalyticsImportReport {
+        isImporting = true
+        importStage = stageText(for: urls)
+        defer { isImporting = false; importStage = nil }
 
-        for url in urls {
-            switch AnalyticsFileImporter.readText(of: url) {
-            case .failure(let reason):
-                report.failures.append(reason.message)
-            case .success(let text):
-                report.readCount += 1
-                let result = AnalyticsLogParser.parse(text)
-                records.append(contentsOf: result.records)
-                // 多文件导入时给提示加上文件名，便于定位是哪个文件没数据
-                if result.records.isEmpty {
-                    warnings.append("\(url.lastPathComponent) 未含电池字段")
+        // 读文件 + 解析都在后台跑，主线程只负责转圈动画
+        let (scanned, records) = await Task.detached(priority: .userInitiated) {
+            () -> (AnalyticsImportReport, [AnalyticsRecord]) in
+            var report = AnalyticsImportReport(fileCount: urls.count)
+            var records: [AnalyticsRecord] = []
+            var warnings: [String] = []
+
+            for url in urls {
+                switch AnalyticsFileImporter.readText(of: url) {
+                case .failure(let reason):
+                    report.failures.append(reason.message)
+                case .success(let text):
+                    report.readCount += 1
+                    let result = AnalyticsLogParser.parse(text)
+                    records.append(contentsOf: result.records)
+                    // 多文件导入时给提示加上文件名，便于定位是哪个文件没数据
+                    if result.records.isEmpty {
+                        warnings.append("\(url.lastPathComponent) 未含电池字段")
+                        warnings.append(contentsOf: result.warnings)
+                    }
                 }
             }
-        }
 
-        report.recordCount = records.count
-        report.warnings = warnings
+            report.recordCount = records.count
+            report.warnings = warnings
+            return (report, records)
+        }.value
+
+        var report = scanned
         report.addedCount = records.isEmpty ? 0 : store.mergeAnalytics(records)
         refresh()
 
         importSucceeded = report.succeeded
         importMessage = report.message
         return report
+    }
+
+    /// 进度文案带上体积，让用户知道大文件需要等一会儿
+    private func stageText(for urls: [URL]) -> String {
+        let total = urls.reduce(0) { sum, url in
+            sum + ((try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
+        }
+        guard total > 0 else { return "正在解析…" }
+        let mb = max(1, total / 1024 / 1024)
+        return "正在解析 \(mb) MB 日志…"
     }
 
     /// 记录一次导入失败（供 UI 直接展示，例如文档选择器本身报错）
