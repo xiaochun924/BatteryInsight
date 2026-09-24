@@ -17,8 +17,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - project: HA-iOS
-            scheme: HA_iOS
+          #- project: HA-iOS
+            #scheme: HA_iOS
           - project: BatteryInsight
             scheme: BatteryInsight
 
