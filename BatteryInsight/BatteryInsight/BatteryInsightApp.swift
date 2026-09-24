@@ -4,7 +4,7 @@ import SwiftUI
 struct BatteryInsightApp: App {
     var body: some Scene {
         WindowGroup {
-            RootTabView()
+            RootView()
         }
     }
 }
