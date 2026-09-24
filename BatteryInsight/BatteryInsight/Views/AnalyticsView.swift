@@ -76,14 +76,21 @@ struct AnalyticsView: View {
                         }
                 }
             }
+            .overlay {
+                if vm.isImporting {
+                    ParsingOverlay(stage: vm.importStage)
+                }
+            }
             // 用 UIKit 选择器而非 .fileImporter：后者在真机 iPhone 上点了文件选不中
             // 也不关闭（见 DocumentPicker.swift 的说明）
             .sheet(isPresented: $showingFileImporter) {
                 DocumentPicker(contentTypes: AnalyticsFileImporter.allowedContentTypes,
                                allowsMultipleSelection: true) { urls in
-                    let report = vm.importAnalyticsFiles(urls)
-                    // 读到了文件但没解析出电池数据时，打开导入页展示逐文件原因
-                    if !report.succeeded { showingImport = true }
+                    Task {
+                        let report = await vm.importAnalyticsFiles(urls)
+                        // 读到了文件但没解析出电池数据时，打开导入页展示逐文件原因
+                        if !report.succeeded { showingImport = true }
+                    }
                 }
             }
         }
@@ -303,9 +310,37 @@ struct AnalyticsView: View {
                 }
                 .buttonStyle(.bordered)
             }
+            .disabled(vm.isImporting)
         }
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// MARK: - 解析中遮罩
+
+/// 解析几十 MB 的日志要几秒，主界面在这期间必须有反馈，
+/// 否则看起来就跟"点了没反应 / 黑屏卡死"一样。
+private struct ParsingOverlay: View {
+    let stage: String?
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.2).ignoresSafeArea()
+            VStack(spacing: 12) {
+                ProgressView()
+                    .controlSize(.large)
+                Text(stage ?? "正在解析…")
+                    .font(.subheadline)
+                Text("日志较大时需要几秒，请稍候")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(24)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+        }
+        // 遮罩期间不要再响应下面的按钮，避免重复触发导入
+        .allowsHitTesting(true)
     }
 }
 
@@ -380,15 +415,18 @@ private struct AnalyticsImportSheet: View {
 
                 Section {
                     Button {
-                        if vm.importAnalyticsLog(pasteText) {
-                            pasteText = ""
+                        Task {
+                            if await vm.importAnalyticsLog(pasteText) {
+                                pasteText = ""
+                            }
                         }
                     } label: {
                         Label("解析并导入", systemImage: "wand.and.stars")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(pasteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(pasteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                              || vm.isImporting)
                 }
             }
             .navigationTitle("导入分析日志")
@@ -398,11 +436,18 @@ private struct AnalyticsImportSheet: View {
                     Button("关闭") { isPresented = false }
                 }
             }
+            .overlay {
+                if vm.isImporting {
+                    ParsingOverlay(stage: vm.importStage)
+                }
+            }
             .sheet(isPresented: $showingFileImporter) {
                 DocumentPicker(contentTypes: AnalyticsFileImporter.allowedContentTypes,
                                allowsMultipleSelection: true) { urls in
-                    // 结果直接写进 vm.importMessage，由上面的「解析结果」区展示
-                    _ = vm.importAnalyticsFiles(urls)
+                    Task {
+                        // 结果直接写进 vm.importMessage，由上面的「解析结果」区展示
+                        _ = await vm.importAnalyticsFiles(urls)
+                    }
                 }
             }
         }
