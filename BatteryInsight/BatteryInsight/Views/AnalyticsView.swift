@@ -1,7 +1,12 @@
 import SwiftUI
 import Charts
+import UIKit
 
-/// 分析日志页：粘贴 iOS「分析数据」中的 Analytics 日志 → 解析 → 分区块展示。
+/// 分析日志页：导入 iOS「分析数据」中的 Analytics 日志 → 解析 → 分区块展示。
+///
+/// 两种导入方式：
+/// - **选文件**（推荐）：在「分析数据」里把 .ips 存到「文件」App，再在这里选中，可多选
+/// - **粘贴文本**：兜底方案，适合只有片段、或不方便存文件的场景
 ///
 /// 两个区块刻意分开：
 /// - **原生字段**：iOS 日志里实际写入的值，可信度高
@@ -20,6 +25,7 @@ struct AnalyticsView: View {
     @State private var pasteText = ""
     @State private var showingRawLog: AnalyticsRecord?
     @State private var showingGuide = false
+    @State private var showingFileImporter = false
 
     var body: some View {
         NavigationStack {
@@ -59,6 +65,20 @@ struct AnalyticsView: View {
             .sheet(isPresented: $showingImport) { importSheet }
             .sheet(item: $showingRawLog) { record in rawSheet(record) }
             .sheet(isPresented: $showingGuide) { guideSheet }
+            // 系统文档选择器：读取「文件」App / 隔空投送 / 云盘里的日志
+            .fileImporter(
+                isPresented: $showingFileImporter,
+                allowedContentTypes: AnalyticsFileImporter.allowedContentTypes,
+                allowsMultipleSelection: true
+            ) { result in
+                // 取消选择属于正常操作，静默返回，不打扰用户
+                guard case .success(let urls) = result else { return }
+                let report = vm.importAnalyticsFiles(urls)
+                if !report.succeeded {
+                    // 失败时打开导入页，借用其中的结果区展示逐文件原因
+                    showingImport = true
+                }
+            }
         }
     }
 
@@ -225,6 +245,20 @@ struct AnalyticsView: View {
         NavigationStack {
             Form {
                 Section {
+                    Button {
+                        showingFileImporter = true
+                    } label: {
+                        Label("选择日志文件", systemImage: "folder.badge.plus")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                } header: {
+                    Text("方式一：从文件导入（推荐）")
+                } footer: {
+                    Text("先在「分析数据」里把 Analytics-*.ips 分享并存储到「文件」App（或用隔空投送到本机），再在这里选中。可一次选多个文件批量导入，不会漏内容。")
+                }
+
+                Section {
                     TextEditor(text: $pasteText)
                         .frame(minHeight: 220)
                         .font(.system(.caption, design: .monospaced))
@@ -238,10 +272,16 @@ struct AnalyticsView: View {
                                     .allowsHitTesting(false)
                             }
                         }
+
+                    Button {
+                        pasteText = UIPasteboard.general.string ?? ""
+                    } label: {
+                        Label("从剪贴板填入", systemImage: "doc.on.clipboard")
+                    }
                 } header: {
-                    Text("日志内容")
+                    Text("方式二：粘贴文本")
                 } footer: {
-                    Text("从「设置 → 隐私与安全性 → 分析与改进 → 分析数据」找到 Analytics-*.ips，打开后全选复制，粘贴到这里。只需含电池字段的片段即可。")
+                    Text("不方便存文件时用这个：在「分析数据」里打开 Analytics-*.ips → 全选 → 拷贝 → 回到这里粘贴。只需含 batteryhealth 字段的片段即可。")
                 }
 
                 if let msg = vm.importMessage {
@@ -311,14 +351,14 @@ struct AnalyticsView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     step("1", "打开分析数据", "设置 → 隐私与安全性 → 分析与改进 → 分析数据")
                     step("2", "找到日志文件", "列表里找以 Analytics- 开头的 .ips 文件（如 Analytics-2026-09-19-100000.ips），按日期排序，选最新的一条")
-                    step("3", "复制内容", "点开文件 → 全选 → 拷贝（文件较大，只需复制含 batteryhealth 字段的段落也可）")
-                    step("4", "回到本 App 导入", "点右上角导入按钮 → 粘贴 → 解析并导入")
+                    step("3", "存到「文件」App（推荐）", "点开文件 → 右上角分享 → 「存储到文件」，挑个位置存下。多存几个不同日期的，趋势图才有意义")
+                    step("4", "回到本 App 导入", "点右上角导入按钮 → 「选择日志文件」→ 选中刚才存的文件。也可以在第 3 步直接全选复制文本，走「粘贴文本」")
 
                     Divider()
 
                     VStack(alignment: .leading, spacing: 6) {
                         Label("说明", systemImage: "info.circle").font(.headline)
-                        Text("本 App 无法直接读取系统分析日志目录（iOS 沙箱限制，第三方 App 无权限访问）。因此需要你手动复制内容后导入。")
+                        Text("本 App 无法直接读取系统分析日志目录（iOS 沙箱限制，第三方 App 无权限访问）。因此需要你先导出到「文件」App，再由你授权后导入。")
                         Text("日志中的 batteryhealth 段落并非每次采样都写入，通常几小时到一天出现一次，所以导入多条才能看到趋势。")
                     }
                     .font(.footnote)
@@ -357,17 +397,24 @@ struct AnalyticsView: View {
                 .font(.largeTitle)
                 .foregroundStyle(.secondary)
             Text("还没有导入分析日志").font(.headline)
-            Text("iOS 的「分析数据」里保存着系统写入的电池健康原始记录，\n包含系统健康度、循环次数、实际容量等。\n\n由于系统限制，本 App 无法自动读取，需要你复制日志内容后粘贴导入。")
+            Text("iOS 的「分析数据」里保存着系统写入的电池健康原始记录，\n包含系统健康度、循环次数、实际容量等。\n\n由于系统限制，本 App 无法自动读取，需要你导出后导入。")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
             HStack(spacing: 10) {
                 Button {
-                    showingImport = true
+                    showingFileImporter = true
                 } label: {
-                    Label("导入日志", systemImage: "square.and.arrow.down")
+                    Label("选择文件", systemImage: "folder.badge.plus")
                 }
                 .buttonStyle(.borderedProminent)
+
+                Button {
+                    showingImport = true
+                } label: {
+                    Label("粘贴文本", systemImage: "square.and.arrow.down")
+                }
+                .buttonStyle(.bordered)
 
                 Button {
                     showingGuide = true

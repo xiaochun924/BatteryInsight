@@ -1,6 +1,47 @@
 import Foundation
 import SwiftUI
 
+/// 一次分析日志导入的汇总结果。
+/// 之所以单独建模而不是只回传 Bool：批量导入时「几个文件成功、几个失败、
+/// 几条重复」都需要如实告诉用户，否则静默丢数据会让人以为导入成功了。
+struct AnalyticsImportReport {
+    /// 用户选择的文件数
+    var fileCount: Int = 0
+    /// 成功读取的文件数
+    var readCount: Int = 0
+    /// 解析出的记录数
+    var recordCount: Int = 0
+    /// 实际入库的新增条数
+    var addedCount: Int = 0
+    /// 逐文件的失败原因（文件读不了、编码不对、过大等）
+    var failures: [String] = []
+    /// 解析过程中的提示（如某文件不含电池字段）
+    var warnings: [String] = []
+
+    /// 是否解析到了电池数据（注意：全部重复也返回 true，由 UI 说明「无新增」）
+    var succeeded: Bool { recordCount > 0 }
+
+    var message: String {
+        var lines: [String] = []
+
+        if recordCount == 0 {
+            lines.append("未解析到电池数据（成功读取 \(readCount)/\(fileCount) 个文件）")
+        } else if addedCount > 0 {
+            lines.append("解析出 \(recordCount) 条记录，新增 \(addedCount) 条")
+            if recordCount > addedCount {
+                lines.append("另 \(recordCount - addedCount) 条与已有记录重复，已跳过")
+            }
+        } else {
+            lines.append("解析出 \(recordCount) 条记录，但均已存在（无新增）")
+        }
+
+        if !failures.isEmpty { lines.append(contentsOf: failures) }
+        if !warnings.isEmpty { lines.append("提示：" + warnings.joined(separator: "；")) }
+
+        return lines.joined(separator: "\n")
+    }
+}
+
 /// 电池分析主状态机：串联监控器、存储与分析引擎。
 @MainActor
 final class BatteryViewModel: ObservableObject {
@@ -130,6 +171,47 @@ final class BatteryViewModel: ObservableObject {
         }
         importMessage = msg
         return true
+    }
+
+    /// 从「文件」选中的一个或多个日志导入。
+    ///
+    /// 逐个文件读取并解析：单个文件读取失败（非文本 / 过大 / 无权限）只记入
+    /// `report.failures`，不影响其余文件，最后一次性合并入库。
+    @discardableResult
+    func importAnalyticsFiles(_ urls: [URL]) -> AnalyticsImportReport {
+        var report = AnalyticsImportReport(fileCount: urls.count)
+        var records: [AnalyticsRecord] = []
+        var warnings: [String] = []
+
+        for url in urls {
+            switch AnalyticsFileImporter.readText(of: url) {
+            case .failure(let reason):
+                report.failures.append(reason)
+            case .success(let text):
+                report.readCount += 1
+                let result = AnalyticsLogParser.parse(text)
+                records.append(contentsOf: result.records)
+                // 多文件导入时给提示加上文件名，便于定位是哪个文件没数据
+                if result.records.isEmpty {
+                    warnings.append("\(url.lastPathComponent) 未含电池字段")
+                }
+            }
+        }
+
+        report.recordCount = records.count
+        report.warnings = warnings
+        report.addedCount = records.isEmpty ? 0 : store.mergeAnalytics(records)
+        refresh()
+
+        importSucceeded = report.succeeded
+        importMessage = report.message
+        return report
+    }
+
+    /// 记录一次导入失败（供 UI 直接展示，例如文档选择器本身报错）
+    func reportImportFailure(_ message: String) {
+        importSucceeded = false
+        importMessage = message
     }
 
     func deleteAnalyticsRecord(_ r: AnalyticsRecord) {

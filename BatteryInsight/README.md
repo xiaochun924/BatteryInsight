@@ -19,13 +19,27 @@
 
 > 结论：电量/充电状态自动采集，健康度与循环次数从系统分析日志导入（或手动录入），分析基于这两类数据。
 
-## 📥 从系统「分析数据」导入<｜hy_place▁holder▁no▁813｜>
+## 📥 从系统「分析数据」导入
 
 这才是拿到**真实**健康度、循环次数、实际容量 / 出厂容量的正确姿势。
 
-**步骤**：设置 → 隐私与安全性 → 分析与改进 → 分析数据 → 找到 `Analytics-*.ips`（按日期排序选最新）→ 全选复制 → 回到 App「日志」页右上角导入 → 粘贴 → 解析并导入。
+### 方式一：从文件导入（推荐）
 
-> ⚠️ **为什么不能自动读取**：该目录在系统进程命名空间下，第三方 App 无权限访问，这也是合规 App 的普遍做法（手动导入）。
+1. 设置 → 隐私与安全性 → 分析与改进 → 分析数据 → 找到 `Analytics-*.ips`（按日期排序选最新）
+2. 点开文件 → 右上角**分享** → **存储到「文件」**（选个位置存下；多存几个不同日期的，趋势图才有意义）
+3. 回到 App「日志分析」页 → 右上角导入 → **选择日志文件** → 选中刚存的文件
+
+支持**一次选多个**批量导入，也可以从隔空投送、iCloud 云盘里选。
+
+### 方式二：粘贴文本
+
+不方便存文件时用：在「分析数据」里打开 `Analytics-*.ips` → 全选 → 拷贝 → 回到 App → 导入 → **粘贴文本**（App 内还有「从剪贴板填入」按钮）。只需含 `batteryhealth` 字段的片段即可。
+
+> ⚠️ **为什么不能自动读取**：该目录在系统进程命名空间下，第三方 App 无权限访问，这也是合规 App 的普遍做法（手动导入）。文件导入走的是系统文档选择器（`.fileImporter`），由你显式授权后读取，本质仍是「你给 App 什么，它读什么」。
+
+> 💡 `.ips` 没有公开 UTI，因此文档选择器的允许类型里包含了 `public.data` 兜底，否则这些文件在选择器里会是灰色不可选的。
+
+导入结果会如实汇报：读取了几个文件、解析出几条记录、新增几条、哪些重复被跳过、哪些文件没解析出数据。
 
 App 会从 `batteryhealth` 段落解析这些**原生字段**：
 
@@ -56,7 +70,7 @@ App 会从 `batteryhealth` 段落解析这些**原生字段**：
 - **充电会话分析**：自动记录每次充电的起止、时长、充入电量、充电速度，识别「整夜充电」
 - **健康度追踪**：手动录入最大容量，画衰减曲线，算 %/月 衰减速率，预估降到 80% 还需几个月
 - **优化建议**：基于真实数据生成（整夜充电、满电久插、深度放电、健康度阈值、耗电过快等）
-- **分析日志导入**：粘贴 Analytics-*.ips，字段驱动的宽松解析（对截断/拼接/多条目都容错），原生数据与衍生指标分块展示
+- **分析日志导入**：支持**从「文件」选 .ips 批量导入**或粘贴文本；字段驱动的宽松解析（对截断/拼接/多条目都容错），原生数据与衍生指标分块展示
 
 ## 运行方式
 
@@ -100,16 +114,17 @@ BatteryInsight/
     │   ├── DataStore.swift         # 本地持久化 + 演示数据生成
     │   ├── BatteryAnalytics.swift  # 分析引擎 + 建议规则
     │   ├── AnalyticsLogParser.swift# 分析日志解析（字段驱动的宽松扫描）
+    │   ├── AnalyticsFileImporter.swift # 文件读取：安全作用域 + 编码兜底 + 体积上限
     │   └── DerivedMetrics.swift    # 衍生指标计算（含公式与依据）
     ├── ViewModels/
-    │   └── BatteryViewModel.swift  # 状态机（@MainActor）
+    │   └── BatteryViewModel.swift  # 状态机（@MainActor）+ 导入汇总报告
     └── Views/
         ├── RootTabView.swift       # Tab 容器
         ├── DashboardView.swift     # 概览：电量环 + 指标卡
         ├── TrendsView.swift        # 趋势：Charts 曲线
         ├── ChargingView.swift      # 充电：会话统计 + 列表
         ├── HealthView.swift        # 健康：录入 + 衰减曲线
-        ├── AnalyticsView.swift     # 日志：粘贴导入 + 原生/衍生分块
+        ├── AnalyticsView.swift     # 日志：文件/粘贴导入 + 原生/衍生分块
         └── TipsView.swift          # 建议列表
 ```
 
@@ -118,7 +133,8 @@ BatteryInsight/
 - **`BatteryMonitor`**（`@MainActor`）：开启 `isBatteryMonitoringEnabled`，60 秒定时采样 + 监听 `batteryLevelDidChange` / `batteryStateDidChange` 通知；状态翻转时回调，用于开启/结算充电会话
 - **`DataStore`**：采样、会话、健康度三类数据落 UserDefaults；采样上限 20000 条，超出丢弃最旧
 - **`BatteryAnalytics`**：纯函数分析，无副作用，便于单测
-- **`BatteryViewModel`**（`@MainActor`）：串联三者，对外暴露 `@Published`
+- **`BatteryViewModel`**（`@MainActor`）：串联三者，对外暴露 `@Published`；导入结果用 `AnalyticsImportReport` 结构化回传
+- **`AnalyticsFileImporter`**：文档选择器返回的 URL 带安全作用域，读取前后需 `start/stopAccessingSecurityScopedResource()`；单文件读取失败不中断批量导入，原因逐条记入报告
 
 ## 数据说明
 
@@ -132,6 +148,7 @@ BatteryInsight/
 - 加 **Widget / 锁屏小组件**展示当前电量与耗电速率
 - 充电完成、低电量时发**本地通知**提醒拔电
 - 结合 **Shortcuts** 在特定场景自动打点采样
+- 注册文档类型，让 `.ips` 文件能直接**分享到本 App**（省去先存「文件」这一步）
 - 导出 CSV 做长期分析
 
 ---
