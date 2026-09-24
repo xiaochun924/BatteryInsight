@@ -35,7 +35,9 @@
 
 不方便存文件时用：在「分析数据」里打开 `Analytics-*.ips` → 全选 → 拷贝 → 回到 App → 导入 → **粘贴文本**（App 内还有「从剪贴板填入」按钮）。只需含 `batteryhealth` 字段的片段即可。
 
-> ⚠️ **为什么不能自动读取**：该目录在系统进程命名空间下，第三方 App 无权限访问，这也是合规 App 的普遍做法（手动导入）。文件导入走的是系统文档选择器（`.fileImporter`），由你显式授权后读取，本质仍是「你给 App 什么，它读什么」。
+> ⚠️ **为什么不能自动读取**：该目录在系统进程命名空间下，第三方 App 无权限访问，这也是合规 App 的普遍做法（手动导入）。文件导入走的是系统文档选择器，由你显式授权后读取，本质仍是「你给 App 什么，它读什么」。
+
+> 🔧 **为什么不用 SwiftUI 的 `.fileImporter`**：它在**真机 iPhone** 上有已知问题——选择器能打开、文件也列得出来，但点了文件既选不中、面板也不关闭，回调永不触发（模拟器 / iPad / Mac Catalyst 正常）。因此改用 `UIViewControllerRepresentable` 包一层 UIKit 的 `UIDocumentPickerViewController`，见 `Views/DocumentPicker.swift`。
 
 > 💡 `.ips` 没有公开 UTI，因此文档选择器的允许类型里包含了 `public.data` 兜底，否则这些文件在选择器里会是灰色不可选的。
 
@@ -86,10 +88,10 @@ App 从 `batteryhealth` 解析这些**原生字段**：
 
 ## 功能
 
-- **耗电速率**：按 %/小时 估算当前掉电速度，并预估剩余可用时长
+> 界面只有**一页**：电池健康（含电量趋势），一屏滚动看完。「概览」「充电」两个页面已移除——前者是实时电量指标、与健康度无关，后者依赖前台捕捉充电状态翻转，iOS 一挂起就漏记，数据不完整。
+
 - **电量趋势**：Swift Charts 折线图，24 小时 / 7 天 / 全部切换，充电段与放电段分色
-- **充电会话分析**：自动记录每次充电的起止、时长、充入电量、充电速度，识别「整夜充电」
-- **健康度追踪**：手动录入最大容量，画衰减曲线，算 %/月 衰减速率，预估降到 80% 还需几个月
+- **健康度追踪**：手动录入或从系统日志导入最大容量，画衰减曲线（含 80% 更换阈值参考线），算 %/月 衰减速率，预估降到 80% 还需几个月
 - **优化建议**：基于真实数据生成（整夜充电、满电久插、深度放电、健康度阈值、耗电过快等）
 - **分析日志导入**：支持**从「文件」选 .ips 批量导入**或粘贴文本；按 `batteryhealth` 结构解析（JSON 优先、正则兜底），原生数据与衍生指标分块展示
 
@@ -134,17 +136,16 @@ BatteryInsight/
     │   ├── BatteryMonitor.swift    # UIDevice 封装：定时采样 + 状态变化通知
     │   ├── DataStore.swift         # 本地持久化 + 演示数据生成
     │   ├── BatteryAnalytics.swift  # 分析引擎 + 建议规则
-    │   ├── AnalyticsLogParser.swift# 分析日志解析（字段驱动的宽松扫描）
+    │   ├── AnalyticsLogParser.swift# 分析日志解析（按 batteryhealth 结构，正则兜底）
     │   ├── AnalyticsFileImporter.swift # 文件读取：安全作用域 + 编码兜底 + 体积上限
     │   └── DerivedMetrics.swift    # 衍生指标计算（含公式与依据）
     ├── ViewModels/
     │   └── BatteryViewModel.swift  # 状态机（@MainActor）+ 导入汇总报告
     └── Views/
-        ├── RootTabView.swift       # Tab 容器
-        ├── DashboardView.swift     # 概览：电量环 + 指标卡
-        ├── TrendsView.swift        # 趋势：Charts 曲线
-        ├── ChargingView.swift      # 充电：会话统计 + 列表
-        ├── HealthView.swift        # 健康：录入 + 衰减曲线
+        ├── RootView.swift          # 根视图（NavigationStack，单页无需 Tab）
+        ├── BatteryHomeView.swift   # 主页面：健康统计 + 衰减曲线 + 电量趋势
+        ├── DocumentPicker.swift    # UIKit 文档选择器（替代 .fileImporter）
+        ├── Components.swift        # MetricCard / HintCard
         ├── AnalyticsView.swift     # 日志：文件/粘贴导入 + 原生/衍生分块
         └── TipsView.swift          # 建议列表
 ```
@@ -161,7 +162,7 @@ BatteryInsight/
 
 - **全部数据仅存本机**，不联网、不上传、无第三方 SDK
 - demo 用 `UserDefaults` 存储；生产建议换 **SwiftData / CoreData**，采样量会持续增长
-- 「概览」页可一键清空全部数据
+- 右上角 ⋯ 菜单里可载入演示数据、一键清空全部数据
 
 ## 后续可扩展
 
