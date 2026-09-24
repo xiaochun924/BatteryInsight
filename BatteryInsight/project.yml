@@ -4,6 +4,8 @@ options:
   bundleIdPrefix: com.audi.battery
   deploymentTarget:
     iOS: "16.0"
+  # 生成时把 xcassets 的 AppIcon 自动接上，避免图标缺失
+  generateEmptyDirectories: true
 
 targets:
   BatteryInsight:
@@ -13,6 +15,21 @@ targets:
       - path: BatteryInsight
     info:
       path: BatteryInsight/Info.plist
+      properties:
+        # 关键的启动图配置：iOS 全屏渲染依赖它。
+        # 裸 <dict/> 在部分 Xcode/iOS 组合下会被判为「无启动图」，
+        # 系统随后按兼容模式以缩小尺寸渲染 —— 这正是「窗口没铺满」的表现。
+        UILaunchScreen:
+          UIColorName: ""
+          UIImageRespectsSafeAreaInsets: false
+        UIRequiresFullScreen: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.audi.battery.BatteryInsight
@@ -22,9 +39,8 @@ targets:
         CURRENT_PROJECT_VERSION: 1
         GENERATE_INFOPLIST_FILE: false
         INFOPLIST_FILE: BatteryInsight/Info.plist
+        # 仅 iPhone；iPad 由系统以兼容模式运行，不影响 iPhone 全屏
         TARGETED_DEVICE_FAMILY: "1"
-        # 仅竖屏；不设置则部分环境会以兼容模式缩放
-        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
-        INFOPLIST_KEY_UIRequiresFullScreen: true
-        # 本 App 主要面向 iPhone
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         DEVELOPMENT_TEAM: ""

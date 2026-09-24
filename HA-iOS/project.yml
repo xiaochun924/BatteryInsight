@@ -14,6 +14,12 @@ targets:
       - path: HA_iOS
     info:
       path: HA_iOS/Info.plist
+      properties:
+        # 启动图声明：裸 <dict/> 在部分 Xcode/iOS 组合下会被判为「无启动图」，
+        # 系统会退回兼容模式以缩小尺寸渲染，表现为「App 没全屏、四周留黑边」。
+        UILaunchScreen:
+          UIColorName: ""
+          UIImageRespectsSafeAreaInsets: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.ha.ios.HA_iOS
@@ -27,4 +33,6 @@ targets:
         GENERATE_INFOPLIST_FILE: false
         INFOPLIST_FILE: HA_iOS/Info.plist
         TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         DEVELOPMENT_TEAM: ""
