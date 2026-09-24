@@ -186,7 +186,7 @@ final class BatteryViewModel: ObservableObject {
         for url in urls {
             switch AnalyticsFileImporter.readText(of: url) {
             case .failure(let reason):
-                report.failures.append(reason)
+                report.failures.append(reason.message)
             case .success(let text):
                 report.readCount += 1
                 let result = AnalyticsLogParser.parse(text)

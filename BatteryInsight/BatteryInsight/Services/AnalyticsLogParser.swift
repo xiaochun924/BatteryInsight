@@ -204,8 +204,9 @@ enum AnalyticsLogParser {
                                 in text: String,
                                 padding: Int = 600,
                                 limit: Int = 4000) -> String {
-        guard let start = cluster.map(\.location).min(),
-              let end = cluster.map { $0.location + $0.length }.max() else { return "" }
+        guard let start = cluster.map(\.location).min() else { return "" }
+        let ends = cluster.map { $0.location + $0.length }
+        guard let end = ends.max() else { return "" }
         let ns = text as NSString
         let from = max(0, start - padding)
         let to = min(ns.length, end + padding)
