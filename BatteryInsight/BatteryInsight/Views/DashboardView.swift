@@ -4,6 +4,9 @@ import SwiftUI
 struct DashboardView: View {
     @EnvironmentObject private var vm: BatteryViewModel
 
+    /// 「更多」入口：概览页右上角跳转到健康 / 建议 / 日志等次要页面
+    @State private var showingMore = false
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -20,8 +23,51 @@ struct DashboardView: View {
                     dataSection
                 }
                 .padding()
+                .padding(.bottom, 8)
             }
             .navigationTitle("电池概览")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showingMore = true } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                }
+            }
+            .sheet(isPresented: $showingMore) { moreSheet }
+        }
+    }
+
+    /// 次要功能统一收进这里，主 Tab 保持 4 个，避免被收纳进系统「More」
+    private var moreSheet: some View {
+        NavigationStack {
+            List {
+                Section("分析") {
+                    NavigationLink {
+                        HealthView()
+                    } label: {
+                        Label("电池健康", systemImage: "heart.fill")
+                    }
+                    NavigationLink {
+                        AnalyticsView()
+                    } label: {
+                        Label("日志分析", systemImage: "doc.text.magnifyingglass")
+                    }
+                }
+                Section("保养") {
+                    NavigationLink {
+                        TipsView()
+                    } label: {
+                        Label("优化建议", systemImage: "lightbulb.fill")
+                    }
+                }
+            }
+            .navigationTitle("更多")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("关闭") { showingMore = false }
+                }
+            }
         }
     }
 

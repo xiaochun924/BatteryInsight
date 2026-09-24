@@ -23,5 +23,8 @@ targets:
         GENERATE_INFOPLIST_FILE: false
         INFOPLIST_FILE: BatteryInsight/Info.plist
         TARGETED_DEVICE_FAMILY: "1"
+        # 仅竖屏；不设置则部分环境会以兼容模式缩放
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_UIRequiresFullScreen: true
         # 本 App 主要面向 iPhone
         DEVELOPMENT_TEAM: ""

@@ -43,6 +43,7 @@ struct AnalyticsView: View {
                 }
             }
             .navigationTitle("日志分析")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { showingGuide = true } label: {

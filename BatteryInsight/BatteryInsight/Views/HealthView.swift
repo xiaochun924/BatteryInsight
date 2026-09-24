@@ -9,6 +9,9 @@ struct HealthView: View {
     @State private var inputCapacity = ""
     @State private var inputCycles = ""
     @State private var inputNote = ""
+    /// 主 Tab 只有 4 个（超 5 个会被系统收进「More」），故日志与建议从这里进入
+    @State private var showingAnalytics = false
+    @State private var showingTips = false
 
     private var sorted: [HealthRecord] {
         vm.healthRecords.sorted { $0.date < $1.date }
@@ -54,11 +57,29 @@ struct HealthView: View {
             }
             .navigationTitle("电池健康")
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Menu {
+                        Button {
+                            showingAnalytics = true
+                        } label: {
+                            Label("日志分析", systemImage: "doc.text.magnifyingglass")
+                        }
+                        Button {
+                            showingTips = true
+                        } label: {
+                            Label("优化建议", systemImage: "lightbulb.fill")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showingAdd = true } label: { Image(systemName: "plus") }
                 }
             }
             .sheet(isPresented: $showingAdd) { addSheet }
+            .sheet(isPresented: $showingAnalytics) { AnalyticsView() }
+            .sheet(isPresented: $showingTips) { TipsView() }
         }
     }
 
@@ -189,14 +210,24 @@ struct HealthView: View {
                 .font(.largeTitle)
                 .foregroundStyle(.secondary)
             Text("还没有健康度记录").font(.headline)
-            Text("iOS 不开放「最大容量 / 循环次数」给第三方 App，需要你手动录入：\n设置 → 电池 → 电池健康与充电 → 查看最大容量。\n\n累计两次以上记录后，就能看到衰减曲线和寿命预估。")
+            Text("iOS 不开放「最大容量 / 循环次数」给第三方 App。\n最准确的做法是从系统「分析数据」导入日志（右上角 ⋯ → 日志分析），\n也可以手动录入：设置 → 电池 → 电池健康与充电。\n\n累计两次以上记录后，就能看到衰减曲线和寿命预估。")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-            Button { showingAdd = true } label: {
-                Label("添加第一条记录", systemImage: "plus")
+            VStack(spacing: 10) {
+                Button { showingAdd = true } label: {
+                    Label("手动添加记录", systemImage: "plus")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button { showingAnalytics = true } label: {
+                    Label("从分析日志导入", systemImage: "square.and.arrow.down")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
             }
-            .buttonStyle(.borderedProminent)
+            .padding(.horizontal, 32)
         }
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
