@@ -6,7 +6,7 @@ import Foundation
 /// `Analytics-YYYYMMDD-*.ips`，其中的 `batteryhealth` 段落。
 ///
 /// 说明：以下字段全部是 iOS 日志中**实际存在**的原生值，未做推测计算。
-struct AnalyticsRecord: Codable, Identifiable, Equatable {
+struct AnalyticsRecord: Codable, Identifiable, Equatable, Sendable {
     let id: UUID
     /// 日志采样时间
     let date: Date
@@ -95,7 +95,7 @@ struct AnalyticsRecord: Codable, Identifiable, Equatable {
 }
 
 /// 解析结果包装：成功记录 / 失败原因 / 统计
-struct AnalyticsParseResult {
+struct AnalyticsParseResult: Sendable {
     var records: [AnalyticsRecord] = []
     var warnings: [String] = []
     /// 输入文本中被识别出的日志条目数
