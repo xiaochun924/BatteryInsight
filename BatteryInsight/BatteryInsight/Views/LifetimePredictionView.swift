@@ -44,20 +44,45 @@ extension BatteryAnalytics {
     static func lifetimeForecast(health: [HealthRecord],
                                  analytics: [AnalyticsRecord]) -> LifetimeForecast {
         let sortedA = analytics.sorted { $0.date < $1.date }
-        let design = sortedA.last?.designCapacity ?? sortedA.last?.nominalChargeCapacity
-        let current = sortedA.last?.rawMaxCapacity ?? sortedA.last?.nominalChargeCapacity
+        let first = sortedA.first
+        let last = sortedA.last
 
-        // 已使用天数
+        // 注意：`a?.b ?? c?.d` 中 a?.b / c?.d 都是嵌套可选项（Int?? / Date??），
+        // `??` 泛型推断存在歧义风险；这里全部先解一层再合并，保证编译稳定。
+        var design: Int?
+        if let d = last?.designCapacity {
+            design = d
+        } else if let n = last?.nominalChargeCapacity {
+            design = n
+        }
+        var current: Int?
+        if let r = last?.rawMaxCapacity {
+            current = r
+        } else if let n = last?.nominalChargeCapacity {
+            current = n
+        }
+
+        // 已使用天数（首次使用日期 DOFU → 最新记录日；无 DOFU 用最早记录日）
+        var firstDay: Date?
+        if let d = first?.firstUseDate {
+            firstDay = d
+        } else if let d = first?.date {
+            firstDay = d
+        }
+        var lastDay: Date?
+        if let d = last?.date {
+            lastDay = d
+        } else if let d = health.sorted { $0.date < $1.date }.last?.date {
+            lastDay = d
+        }
         var days: Double?
-        let firstDay = sortedA.first?.firstUseDate ?? sortedA.first?.date
-        let lastDay = sortedA.last?.date ?? health.sorted { $0.date < $1.date }.last?.date
         if let f = firstDay, let l = lastDay, l > f {
             days = l.timeIntervalSince(f) / 86_400
         }
 
         // 每日循环次数
         var cpd: Double?
-        if let cycles = sortedA.last?.cycleCount, let d = days, d > 0 {
+        if let cycles = last?.cycleCount, let d = days, d > 0 {
             cpd = Double(cycles) / d
         }
 
@@ -65,7 +90,7 @@ extension BatteryAnalytics {
         var total: Double?
         if let rate = healthDeclinePerMonth(health), let cap = design,
            rate > 0, cap > 0 {
-            total = rate / 100 * cap / 30
+            total = rate / 100 * Double(cap) / 30
         }
 
         // 双轨分解
