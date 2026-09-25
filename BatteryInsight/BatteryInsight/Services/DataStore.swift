@@ -119,11 +119,6 @@ final class DataStore: ObservableObject {
         save()
     }
 
-    func deleteAnalyticsRecord(_ r: AnalyticsRecord) {
-        analyticsRecords.removeAll { $0.id == r.id }
-        save()
-    }
-
     // MARK: - 持久化
 
     private func save() {

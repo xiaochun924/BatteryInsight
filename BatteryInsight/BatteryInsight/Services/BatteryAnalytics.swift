@@ -1,25 +1,6 @@
 import Foundation
 import SwiftUI
 
-/// 一条省电/保养建议
-struct BatteryTip: Identifiable {
-    enum Severity { case info, warning, critical }
-
-    let id = UUID()
-    let icon: String
-    let title: String
-    let detail: String
-    let severity: Severity
-
-    var tint: Color {
-        switch severity {
-        case .info:     return .blue
-        case .warning:  return .orange
-        case .critical: return .red
-        }
-    }
-}
-
 /// 周报 / 月报的聚合摘要。
 /// 数据全部来自本地已采集 / 已导入的记录，不含推测值；
 /// 没有数据的项保持 nil，UI 显示「--」。
@@ -210,13 +191,6 @@ enum BatteryAnalytics {
         sessions.filter { $0.isOvernight }.count
     }
 
-    /// 是否存在「充满后仍长时间连接」的会话
-    static func hasLongFullCharge(sessions: [ChargingSession], thresholdHours: Double = 3) -> Bool {
-        sessions.contains { session in
-            session.peakLevel >= 0.99 && session.duration / 3600 >= thresholdHours
-        }
-    }
-
     // MARK: - 健康度
 
     static func latestHealth(_ records: [HealthRecord]) -> HealthRecord? {
@@ -241,87 +215,5 @@ enum BatteryAnalytics {
               rate > 0,
               latest.maximumCapacity > 80 else { return nil }
         return (latest.maximumCapacity - 80) / rate
-    }
-
-    // MARK: - 建议生成
-
-    static func generateTips(samples: [BatterySample],
-                             sessions: [ChargingSession],
-                             health: [HealthRecord]) -> [BatteryTip] {
-        var tips: [BatteryTip] = []
-
-        // 1. 整夜充电
-        let overnight = overnightCount(sessions: sessions)
-        if overnight >= 3 {
-            tips.append(BatteryTip(
-                icon: "moon.zzz.fill",
-                title: "检测到 \(overnight) 次整夜充电",
-                detail: "长期整夜满电会加速电池老化。建议在「设置 → 电池 → 电池健康」开启「优化电池充电」，让系统学习你的作息并暂缓充至 80% 以上。",
-                severity: .warning))
-        }
-
-        // 2. 充满后长时间连接
-        if hasLongFullCharge(sessions: sessions) {
-            tips.append(BatteryTip(
-                icon: "bolt.badge.clock",
-                title: "存在满电后长时间连接",
-                detail: "电池充满后继续插着电源会让电池持续处于高压状态。充满后建议及时拔掉，尤其避免整夜插电。",
-                severity: .warning))
-        }
-
-        // 3. 健康度阈值
-        if let latest = latestHealth(health) {
-            if latest.maximumCapacity < 80 {
-                tips.append(BatteryTip(
-                    icon: "exclamationmark.triangle.fill",
-                    title: "最大容量已降至 \(String(format: "%.0f", latest.maximumCapacity))%",
-                    detail: "已低于 Apple 建议的 80% 阈值，电池续航会明显下降。建议预约官方更换电池。",
-                    severity: .critical))
-            } else if latest.maximumCapacity < 85 {
-                tips.append(BatteryTip(
-                    icon: "battery.75",
-                    title: "最大容量 \(String(format: "%.0f", latest.maximumCapacity))%，接近更换阈值",
-                    detail: "距离 80% 的更换建议线已不远，可以开始规划更换时机。",
-                    severity: .warning))
-            }
-        }
-
-        // 4. 耗电速率
-        if let rate = drainRate(samples: samples), rate > 15 {
-            tips.append(BatteryTip(
-                icon: "flame.fill",
-                title: "当前耗电偏快（约 \(String(format: "%.1f", rate))%/小时）",
-                detail: "可检查：后台 App 刷新、定位常驻、屏幕亮度过高、信号弱区驻留、或近期是否有异常耗电的 App。",
-                severity: .warning))
-        }
-
-        // 5. 深度放电
-        let deepDischarge = sessions.filter { $0.startLevel < 0.1 }.count
-        if deepDischarge >= 2 {
-            tips.append(BatteryTip(
-                icon: "battery.25",
-                title: "有 \(deepDischarge) 次在电量低于 10% 才开始充电",
-                detail: "锂电池不宜深度放电。尽量在 20%~30% 时补电，保持「浅充浅放」更利于延长寿命。",
-                severity: .warning))
-        }
-
-        // 6. 常驻通用建议
-        tips.append(BatteryTip(
-            icon: "thermometer.sun.fill",
-            title: "避免高温环境充电",
-            detail: "高温是电池老化的最大元凶。充电时避免阳光直射、避免边玩大型游戏边充，发热明显时可取下保护壳。",
-            severity: .info))
-        tips.append(BatteryTip(
-            icon: "cable.connector",
-            title: "使用原装或 MFi 认证充电器",
-            detail: "劣质充电器电压电流不稳，可能损伤电池与充电电路。",
-            severity: .info))
-        tips.append(BatteryTip(
-            icon: "chart.line.downtrend.xyaxis",
-            title: "长期存放请保持约 50% 电量",
-            detail: "若设备长期不用，充到一半再关机存放，比满电或空电存放更能保护电池。",
-            severity: .info))
-
-        return tips
     }
 }

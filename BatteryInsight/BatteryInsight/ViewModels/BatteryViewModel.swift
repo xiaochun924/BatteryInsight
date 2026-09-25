@@ -53,7 +53,6 @@ final class BatteryViewModel: ObservableObject {
     @Published var sessions: [ChargingSession] = []
     @Published var healthRecords: [HealthRecord] = []
     @Published var analyticsRecords: [AnalyticsRecord] = []
-    @Published var tips: [BatteryTip] = []
 
     /// 最近一次日志导入的提示信息（供 UI 展示成功/失败）
     @Published var importMessage: String?
@@ -183,18 +182,9 @@ final class BatteryViewModel: ObservableObject {
         drainRate = BatteryAnalytics.drainRate(samples: samples)
         remainingHours = BatteryAnalytics.estimatedRemainingHours(level: max(level, 0),
                                                                   drainRate: drainRate)
-        tips = BatteryAnalytics.generateTips(samples: samples,
-                                            sessions: sessions,
-                                            health: healthRecords)
     }
 
     // MARK: - 操作
-
-    func addHealth(capacity: Double, cycles: Int?, note: String?) {
-        let record = HealthRecord(maximumCapacity: capacity, cycleCount: cycles, note: note)
-        store.addHealthRecord(record)
-        refresh()
-    }
 
     func deleteHealth(_ record: HealthRecord) {
         store.deleteHealthRecord(record)
@@ -208,50 +198,7 @@ final class BatteryViewModel: ObservableObject {
         analyticsRecords.max { $0.date < $1.date }
     }
 
-    /// 最新记录的原生字段指标
-    var nativeMetrics: [DerivedMetric] {
-        guard let r = latestAnalytics else { return [] }
-        return DerivedMetrics.nativeMetrics(from: r)
-    }
-
-    /// 全部记录推导出的衍生指标
-    var derivedMetrics: [DerivedMetric] {
-        DerivedMetrics.make(from: analyticsRecords)
-    }
-
-    /// 解析并导入粘贴的日志文本，返回是否成功。
-    ///
-    /// 解析放在后台线程：几十 MB 的日志在主线程解析要几秒，界面会直接卡成黑屏，
-    /// 期间由 `isImporting` 驱动转圈动画。
-    @discardableResult
-    func importAnalyticsLog(_ text: String) async -> Bool {
-        isImporting = true
-        importStage = "正在解析…"
-        defer { isImporting = false; importStage = nil }
-
-        let result = await Task.detached(priority: .userInitiated) {
-            AnalyticsLogParser.parse(text)
-        }.value
-
-        guard !result.isEmpty else {
-            importSucceeded = false
-            importMessage = result.summary
-            return false
-        }
-        let added = store.mergeAnalytics(result.records)
-        syncHealthFromAnalytics(result.records)
-        refresh()
-        importSucceeded = true
-        var msg = "解析出 \(result.records.count) 条记录"
-        msg += added > 0 ? "，新增 \(added) 条" : "，均已存在（无新增）"
-        if !result.warnings.isEmpty {
-            msg += "\n提示：" + result.warnings.joined(separator: "；")
-        }
-        importMessage = msg
-        return true
-    }
-
-    /// 从「文件」选中的一个或多个日志导入。
+    /// 解析并导入从「文件」选中的一个或多个日志。
     ///
     /// 逐个文件读取并解析：单个文件读取失败（非文本 / 过大 / 无权限）只记入
     /// `report.failures`，不影响其余文件，最后一次性合并入库。
@@ -345,11 +292,6 @@ final class BatteryViewModel: ObservableObject {
     func reportImportFailure(_ message: String) {
         importSucceeded = false
         importMessage = message
-    }
-
-    func deleteAnalyticsRecord(_ r: AnalyticsRecord) {
-        store.deleteAnalyticsRecord(r)
-        refresh()
     }
 
     func loadDemoData() {

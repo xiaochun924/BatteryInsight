@@ -16,9 +16,6 @@ import Charts
 struct BatteryHomeView: View {
     @EnvironmentObject private var vm: BatteryViewModel
 
-    @State private var showingAdd = false
-    @State private var showingAnalytics = false
-    @State private var showingTips = false
     @State private var showingReport = false
     /// 寿命预测弹窗（趋势卡「详情」按钮打开）
     @State private var showingLifetime = false
@@ -98,15 +95,8 @@ struct BatteryHomeView: View {
             showsBackButton: false,
             leading: {
                 Menu {
-                    Button { showingAdd = true } label: {
-                        Label("手动添加记录", systemImage: "plus")
-                    }
-                    Button { showingAnalytics = true } label: {
-                        Label("日志分析", systemImage: "doc.text.magnifyingglass")
-                    }
-                    Button { showingTips = true } label: {
-                        Label("优化建议", systemImage: "lightbulb.fill")
-                    }
+                    // 按需求只保留「周期报告」；手动添加记录 / 日志分析 / 优化建议
+                    // 三个功能已整体删除
                     Button { showingReport = true } label: {
                         Label("周期报告", systemImage: "calendar")
                     }
@@ -134,9 +124,6 @@ struct BatteryHomeView: View {
                 .disabled(vm.isImporting)
             }
         )
-        .sheet(isPresented: $showingAdd) { addSheet }
-        .sheet(isPresented: $showingAnalytics) { AnalyticsView() }
-        .sheet(isPresented: $showingTips) { TipsView() }
         .sheet(isPresented: $showingReport) { BatteryReportView() }
         .sheet(isPresented: $showingLifetime) { LifetimePredictionView() }
         // 直接从最顶层 VC 弹系统选择器，不再包一层 sheet——
@@ -175,8 +162,7 @@ struct BatteryHomeView: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
                         .background(.quaternary, in: Capsule())
-                }()
-            )
+                }())
 
             if let record = latest {
                 infoRow(
@@ -250,7 +236,7 @@ struct BatteryHomeView: View {
 
     private var trendCard: some View {
         Section {
-            // 头部：「健康 / 容量」切换 + 衰减速率 + 详细分析入口
+            // 头部：「健康 / 容量」切换 + 衰减速率
             VStack(spacing: 12) {
                 HStack {
                     if hasCapacityData {
@@ -273,15 +259,6 @@ struct BatteryHomeView: View {
                     }
 
                     Spacer()
-
-                    Button { showingAnalytics = true } label: {
-                        Label("详细分析", systemImage: "arrow.up.right")
-                            .font(.footnote.bold())
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(.quaternary, in: Capsule())
-                    }
-                    .buttonStyle(.plain)
                 }
 
                 trendChart
@@ -410,7 +387,7 @@ struct BatteryHomeView: View {
         }
     }
 
-    /// 取该条手动记录同一天的分析日志（详情页的数据源之一）
+    /// 取该条记录同一天的分析日志（详情页的数据源之一）
     private func analyticsFor(_ record: HealthRecord) -> AnalyticsRecord? {
         let day = Calendar.current.startOfDay(for: record.date)
         return sortedAnalytics.first { Calendar.current.startOfDay(for: $0.date) == day }
@@ -510,55 +487,6 @@ struct BatteryHomeView: View {
         return .green
     }
 
-    // MARK: - 手动录入
-
-    private var addSheet: some View {
-        NavigationStack {
-            Form {
-                Section("最大容量（%）") {
-                    TextField("例如 92", text: $inputCapacity)
-                        .keyboardType(.decimalPad)
-                    Text("在 iPhone「设置 → 电池 → 电池健康与充电」中查看「最大容量」，把数字填到这里。")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-                Section("循环次数（可选）") {
-                    TextField("例如 320", text: $inputCycles)
-                        .keyboardType(.numberPad)
-                }
-                Section("备注（可选）") {
-                    TextField("例如：更换新电池后", text: $inputNote)
-                }
-            }
-            .navigationTitle("添加健康记录")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { showingAdd = false }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("保存") { save() }
-                        .disabled(inputCapacity.isEmpty)
-                }
-            }
-        }
-    }
-
-    @State private var inputCapacity = ""
-    @State private var inputCycles = ""
-    @State private var inputNote = ""
-
-    private func save() {
-        guard let capacity = Double(inputCapacity), capacity > 0, capacity <= 100 else { return }
-        let cycles = Int(inputCycles)
-        let note = inputNote.isEmpty ? nil : inputNote
-        vm.addHealth(capacity: capacity, cycles: cycles, note: note)
-        inputCapacity = ""
-        inputCycles = ""
-        inputNote = ""
-        showingAdd = false
-    }
-
     // MARK: - 空态
 
     private var emptyState: some View {
@@ -568,8 +496,8 @@ struct BatteryHomeView: View {
                 .foregroundStyle(.secondary)
             Text("还没有电池数据").font(.headline)
             Text("iOS 不开放「最大容量 / 循环次数」给第三方 App。\n"
-                 + "最准确的做法是从系统「分析数据」导入日志，\n"
-                 + "也可以手动录入：设置 → 电池 → 电池健康与充电。")
+                 + "最准确的做法是从系统「分析数据」导入日志：\n"
+                 + "设置 → 隐私与安全性 → 分析与改进 → 分析数据")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -580,12 +508,6 @@ struct BatteryHomeView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(vm.isImporting)
-
-                Button { showingAdd = true } label: {
-                    Label("手动添加记录", systemImage: "plus")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
             }
             .padding(.horizontal, 32)
         }
