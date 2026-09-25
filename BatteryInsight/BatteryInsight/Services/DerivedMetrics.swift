@@ -246,7 +246,6 @@ enum DerivedMetrics {
                 formula: source("temperature", in: record, fallback: "Temperature"),
                 basis: "日志原生字段"))
         }
-        out.append(contentsOf: extraFieldMetrics(from: record))
         return out
     }
 
@@ -254,36 +253,5 @@ enum DerivedMetrics {
                                in record: AnalyticsRecord,
                                fallback: String) -> String {
         "iOS 直接写入（\(record.fieldSources[field] ?? fallback)）"
-    }
-
-    /// `batteryhealth` 里其余未单独建模的数值字段。
-    /// 原样展示系统写入的键名与数值，**不解释含义**——这些字段苹果未公开文档，
-    /// 任何"解读"都是猜测，交给用户自行判断。
-    static func extraFieldMetrics(from record: AnalyticsRecord) -> [DerivedMetric] {
-        record.sortedExtraFields.map { field in
-            DerivedMetric(
-                title: shortKey(field.key),
-                value: format(field.value),
-                unit: "",
-                icon: "number",
-                formula: "iOS 直接写入（\(field.key)）",
-                basis: "原生字段，含义未公开")
-        }
-    }
-
-    /// 展示时去掉 `last_value_` / `com.apple.power.battery.` 这类前缀，
-    /// 完整键名仍保留在「口径」行里，便于核对。
-    private static func shortKey(_ key: String) -> String {
-        var s = key
-        for prefix in ["last_value_", "com.apple.power.battery.", "com_apple_power_battery_"] {
-            if s.hasPrefix(prefix) { s = String(s.dropFirst(prefix.count)); break }
-        }
-        return s
-    }
-
-    private static func format(_ v: Double) -> String {
-        // 整数值不带小数点，小数保留 3 位，避免 4906.000000 这种噪音
-        if v == v.rounded(), abs(v) < 1e15 { return String(Int(v)) }
-        return String(format: "%.3f", v)
     }
 }
