@@ -1,14 +1,15 @@
 import SwiftUI
 import UIKit
 
-/// 单条检测记录的详情页（布局参考系统电池类 App 的记录详情）：
+/// 单条检测记录的详情页（布局对齐主流电池工具的记录详情）：
 ///
 /// - 标题：「9月23日 电池记录」
 /// - 顶部「电池数据 / 其他数据」分段切换：
 ///   - **电池数据**：电池健康卡（系统健康度 / 计算健康度 / 循环次数）+ 核心数据卡
-///     （额定容量 / 出厂容量 / 电压 / 温度）
-///   - **其他数据**：日志里除上述字段外的**全部原始数值字段**（如 AppleRawMaxCapacity、
-///     Qmax、WeightedRa……）。这些字段苹果未公开含义，只原样呈现键名与数值，不做解读。
+///     （实时容量 / 出厂容量 / 温度）
+///   - **其他数据**：对齐竞品口径的解读字段（满充容量范围、Qmax、电压范围、电流峰值、
+///     温度区间、每日 SOC、累计运行时间……），映射关系均经真实日志逐值核对；
+///     尚未解读的字段在「更多原始字段」里按原键名呈现。
 ///
 /// 数据来源：手动记录（HealthRecord）+ 当天导入的分析日志（AnalyticsRecord）。
 /// 只有手动记录时也能打开，缺的字段显示「--」。
@@ -27,7 +28,10 @@ struct RecordDetailView: View {
 
     /// 「其他数据」里有内容才显示该分段
     private var hasOtherData: Bool {
-        !(analytics?.sortedExtraFields.isEmpty ?? true)
+        guard let a = analytics else { return false }
+        return a.rawMaxCapacity != nil || factoryCapacity != nil || a.minFCC != nil
+            || a.maxPackVoltage != nil || a.dailyMaxSoc != nil || a.lastUpdateTime != nil
+            || !a.sortedExtraFields.isEmpty
     }
 
     var body: some View {
@@ -68,6 +72,12 @@ struct RecordDetailView: View {
         record.date.chineseDateText + " 电池记录"
     }
 
+    /// 出厂容量：iOS 26 日志里没有 DesignCapacity，按机型取官方标称值；
+    /// 老日志里真有 DesignCapacity 时以日志为准。
+    private var factoryCapacity: Int? {
+        DeviceBatterySpec.current?.factoryCapacity ?? analytics?.designCapacity
+    }
+
     // MARK: - 电池数据
 
     private var batteryTab: some View {
@@ -82,8 +92,8 @@ struct RecordDetailView: View {
                     row("系统健康度", valueText: String(format: "%.1f", h) + " %", tint: .green)
                 }
                 if let nominal = analytics?.nominalChargeCapacity,
-                   let design = analytics?.designCapacity, design > 0 {
-                    row("计算健康度", valueText: String(format: "%.1f", Double(nominal) / Double(design) * 100) + " %",
+                   let factory = factoryCapacity, factory > 0 {
+                    row("计算健康度", valueText: String(format: "%.1f", Double(nominal) / Double(factory) * 100) + " %",
                         tint: .green,
                         caption: "额定容量 ÷ 出厂容量")
                 }
@@ -94,19 +104,20 @@ struct RecordDetailView: View {
                     row("备注", valueText: note, tint: .gray)
                 }
             } footer: {
-                Text("计算健康度 = 额定容量 ÷ 出厂容量，与系统健康度口径不同，仅供参考对比。")
+                Text("计算健康度 = 出厂容量 ÷ 额定容量，与系统健康度口径不同，仅供参考对比。")
             }
 
             Section {
                 headerLabel("核心数据", icon: "info.circle.fill", tint: .green)
+                if let v = analytics?.rawMaxCapacity {
+                    row("实时容量", valueText: "\(v) mAh", tint: .green)
+                }
+                if let v = factoryCapacity {
+                    row("出厂容量", valueText: "\(v) mAh", tint: .green,
+                        caption: (DeviceBatterySpec.current?.marketingName ?? "") + " 默认容量")
+                }
                 if let nominal = analytics?.nominalChargeCapacity {
                     row("额定容量", valueText: "\(nominal) mAh", tint: .green)
-                }
-                if let design = analytics?.designCapacity {
-                    row("出厂容量", valueText: "\(design) mAh", tint: .green)
-                }
-                if let voltage = analytics?.voltage {
-                    row("电池电压", valueText: String(format: "%.3f V", voltage), tint: .yellow)
                 }
                 if let temp = analytics?.temperature {
                     row("电池温度", valueText: String(format: "%.1f ℃", temp), tint: .orange)
@@ -119,21 +130,95 @@ struct RecordDetailView: View {
         }
     }
 
-    // MARK: - 其他数据（日志原始字段）
+    // MARK: - 其他数据（对齐主流电池 App 的字段口径，全部来自分析日志真实键）
 
     private var othersTab: some View {
         Group {
             Section {
-                headerLabel("日志原始字段", icon: "info.circle.fill", tint: .green)
-                ForEach(analytics?.sortedExtraFields ?? [], id: \.key) { field in
-                    row(cleanKey(field.key), valueText: formatNumber(field.value), tint: .green)
+                headerLabel("其他数据", icon: "info.circle.fill", tint: .green)
+                if let v = analytics?.rawMaxCapacity {
+                    row("实时容量", valueText: "\(v) mAh", tint: .green)
+                }
+                if let v = factoryCapacity {
+                    row("出厂容量", valueText: "\(v) mAh", tint: .green)
+                }
+                if let v = analytics?.nominalChargeCapacity {
+                    row("额定容量", valueText: "\(v) mAh", tint: .green)
+                }
+                if let hi = analytics?.maxTemperature {
+                    let lo = analytics?.minTemperature
+                    var text = "历史最高 \(String(format: "%.1f", hi))°"
+                    if let avg = analytics?.temperature {
+                        text += "，平均 \(String(format: "%.1f", avg))°"
+                    }
+                    if let lo { text = "历史最低 \(String(format: "%.1f", lo))°，" + text }
+                    row("温度区间", valueText: text, tint: .orange)
+                }
+                if let lo = analytics?.minFCC, let hi = analytics?.maxFCC {
+                    row("满充容量（范围）", valueText: "\(lo)–\(hi) mAh", tint: .green)
+                }
+                if analytics?.minQmax != nil || analytics?.qmaxCell0 != nil {
+                    var text = ""
+                    if let lo = analytics?.minQmax, let hi = analytics?.maxQmax {
+                        text = "\(lo)–\(hi) mAh"
+                    }
+                    if let c = analytics?.qmaxCell0 {
+                        text = text.isEmpty ? "Cell0：\(c) mAh" : text + "\nCell0：\(c) mAh"
+                    }
+                    row("Qmax 范围", valueText: text, tint: .green)
+                }
+                if let lo = analytics?.minPackVoltage, let hi = analytics?.maxPackVoltage {
+                    row("电压范围",
+                        valueText: "最小 \(String(format: "%.3f", lo)) V\n最大 \(String(format: "%.3f", hi)) V",
+                        tint: .yellow)
+                }
+                if analytics?.maxChargeCurrent != nil || analytics?.maxDischargeCurrent != nil {
+                    var text = ""
+                    if let c = analytics?.maxChargeCurrent {
+                        text = "充电峰值 ≈ \(String(format: "%.2f", c)) A"
+                    }
+                    if let d = analytics?.maxDischargeCurrent {
+                        let line = "放电峰值 ≈ \(String(format: "%.2f", d)) A"
+                        text = text.isEmpty ? line : text + "\n" + line
+                    }
+                    row("电流数据", valueText: text, tint: .blue)
+                }
+                if let v = analytics?.dailyMinSoc {
+                    row("最低充电起始电量", valueText: "\(v)%", tint: .green)
+                }
+                if let v = analytics?.dailyMaxSoc {
+                    row("最高充电截止电量", valueText: "\(v)%", tint: .green)
+                }
+                if let d = analytics?.lastUpdateTime {
+                    row("记录更新时间", valueText: d.chineseDateText, tint: .gray)
+                }
+                if let h = analytics?.totalOperatingHours {
+                    let hours = Int(h.rounded())
+                    let grouped = NumberFormatter.localizedString(from: NSNumber(value: hours), number: .decimal)
+                    row("累计运行时间",
+                        valueText: "\(grouped) 小时（\(String(format: "%.1f", h / 24)) 天）",
+                        tint: .gray)
                 }
             } footer: {
-                Text("以上是分析日志里除核心字段外的全部数值字段，键名为日志原始键名"
-                     + "（已去掉 last_value_ 前缀）。这些字段苹果未公开含义，"
-                     + "这里只原样呈现，不做任何解读。")
+                Text("以上字段取自分析日志的电池统计段（last_value_ 系列键），口径与主流电池工具一致；长按数值可复制核对。")
+            }
+
+            if !remainingExtraFields.isEmpty {
+                Section {
+                    headerLabel("更多原始字段", icon: "curlybraces", tint: .secondary)
+                    ForEach(remainingExtraFields, id: \.key) { field in
+                        row(cleanKey(field.key), valueText: formatNumber(field.value), tint: .gray)
+                    }
+                } footer: {
+                    Text("日志里尚未解读的字段，按原始键名呈现。")
+                }
             }
         }
+    }
+
+    /// 已在上方单独展示、不必重复出现的字段
+    private var remainingExtraFields: [(key: String, value: Double)] {
+        analytics?.sortedExtraFields.filter { !AnalyticsLogParser.classifies($0.key) } ?? []
     }
 
     // MARK: - 通用组件
@@ -237,11 +322,17 @@ struct RecordDetailView: View {
         if let cycles = record.cycleCount ?? analytics?.cycleCount {
             lines.append("循环次数：\(cycles)")
         }
-        if let nominal = analytics?.nominalChargeCapacity {
-            lines.append("额定容量：\(nominal) mAh")
+        if let v = analytics?.rawMaxCapacity {
+            lines.append("实时容量：\(v) mAh")
         }
-        if let design = analytics?.designCapacity {
-            lines.append("出厂容量：\(design) mAh")
+        if let v = analytics?.nominalChargeCapacity {
+            lines.append("额定容量：\(v) mAh")
+        }
+        if let v = factoryCapacity {
+            lines.append("出厂容量：\(v) mAh")
+        }
+        if let lo = analytics?.minFCC, let hi = analytics?.maxFCC {
+            lines.append("满充容量（范围）：\(lo)–\(hi) mAh")
         }
         for field in analytics?.sortedExtraFields ?? [] {
             lines.append("\(cleanKey(field.key))：\(formatNumber(field.value))")
