@@ -216,15 +216,12 @@ struct AnalyticsView: View {
 
     // MARK: - 趋势图
 
-    /// 图上的一个点：日期 + 健康度百分比
-    /// 优先用系统写入的 MaximumCapacityPercent；没有时退回「出厂容量 ÷ 额定容量」
+    /// 图上的一个点：日期 + 计算健康度（额定容量 ÷ 出厂容量，出厂容量按机型取官方标称）
     private var healthPoints: [HealthPoint] {
         vm.analyticsRecords.compactMap { r -> HealthPoint? in
-            if let h = r.systemHealthPercent {
-                return HealthPoint(date: r.date, pct: h)
-            }
-            guard let n = r.nominalChargeCapacity,
-                  let d = r.designCapacity, d > 0 else { return nil }
+            guard let n = r.nominalChargeCapacity else { return nil }
+            let d = r.designCapacity ?? DeviceBatterySpec.current?.factoryCapacity
+            guard let d, d > 0 else { return nil }
             return HealthPoint(date: r.date, pct: Double(n) / Double(d) * 100)
         }
     }
@@ -264,10 +261,6 @@ struct AnalyticsView: View {
                     HStack {
                         Text(r.dateText).font(.subheadline)
                         Spacer()
-                        if let h = r.systemHealthPercent {
-                            Text(String(format: "系统 %.1f%%", h))
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
                     }
                     HStack(spacing: 10) {
                         if let c = r.cycleCount {
@@ -320,7 +313,7 @@ struct AnalyticsView: View {
                 .foregroundStyle(.secondary)
             Text("还没有导入分析日志").font(.headline)
             Text("iOS 的「分析数据」里保存着系统写入的电池健康原始记录，\n"
-                 + "包含系统健康度、循环次数、实际容量等。\n\n"
+                 + "包含循环次数、实际容量等。\n\n"
                  + "由于系统限制，本 App 无法自动读取，需要你导出后导入。")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
