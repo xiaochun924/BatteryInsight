@@ -75,8 +75,16 @@ enum BatteryAnalytics {
         let isWeekly = (kind == "周报")
         let days = isWeekly ? 7 : 30
         guard let start = calendar.date(byAdding: .day, value: -days, to: calendar.startOfDay(for: now)) else {
-            return BatteryReport(kind: kind, startDate: now, endDate: now,
-                                 chargeCount: 0)
+            return BatteryReport(kind: kind,
+                                 startDate: now,
+                                 endDate: now,
+                                 healthStart: nil, healthEnd: nil, healthDelta: nil,
+                                 capacityStart: nil, capacityEnd: nil, capacityDelta: nil,
+                                 cyclesStart: nil, cyclesEnd: nil, cyclesDelta: nil,
+                                 chargeCount: 0,
+                                 avgChargeHours: nil, avgChargeSpeed: nil,
+                                 overnightCount: 0,
+                                 avgTemp: nil, maxTemp: nil)
         }
         let end = now
 
