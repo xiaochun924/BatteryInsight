@@ -68,8 +68,14 @@ struct AnalyticsView: View {
                     .disabled(vm.isImporting)
                 }
             }
-            .sheet(isPresented: $showingFileImporter) {
-                AnalyticsFileImporterSheet(isPresented: $showingFileImporter) {
+            // 直接从最顶层 VC 弹系统选择器，不经过中间 sheet（避免先闪一层白卡）
+            .documentPicker(
+                isPresented: $showingFileImporter,
+                contentTypes: AnalyticsFileImporter.allowedContentTypes,
+                allowsMultipleSelection: true
+            ) { urls in
+                Task {
+                    _ = await vm.importAnalyticsFiles(urls)
                     showingResult = true
                 }
             }
@@ -307,35 +313,6 @@ struct AnalyticsView: View {
         }
         .padding(32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-
-// MARK: - 文件导入
-
-/// 「导入」一步到位：sheet 里直接就是系统文件管理器。
-///
-/// 两个关键点：
-/// 1. 用 UIKit `UIDocumentPickerViewController` 而不是 SwiftUI `.fileImporter`
-///    ——后者在真机 iPhone 上点了文件选不中也不关闭（见 DocumentPicker.swift）。
-/// 2. 选完 / 取消后**必须把宿主 sheet 一起关掉**。宿主是个透明 VC，
-///    不关就会留一层空白遮罩盖在界面上，看着像"卡住了"。
-struct AnalyticsFileImporterSheet: View {
-    @EnvironmentObject private var vm: BatteryViewModel
-    @Binding var isPresented: Bool
-    /// 解析结束后通知外层弹结果提示（本 sheet 已关闭，alert 得挂在外层）
-    let onFinish: () -> Void
-
-    var body: some View {
-        DocumentPicker(contentTypes: AnalyticsFileImporter.allowedContentTypes,
-                       allowsMultipleSelection: true) { urls in
-            isPresented = false
-            Task {
-                _ = await vm.importAnalyticsFiles(urls)
-                onFinish()
-            }
-        } onCancel: {
-            isPresented = false
-        }
     }
 }
 
