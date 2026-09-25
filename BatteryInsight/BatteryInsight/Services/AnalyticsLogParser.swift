@@ -56,7 +56,7 @@ enum AnalyticsLogParser {
         return out
     }
 
-    /// 候选键名后缀（按优先级）：命中第一个「后缀匹配且数值合理」的为止。
+    /// 候选键名后缀（按优先级）：命中第一个「后缀匹配 + 数值合理」的为止。
     /// 之所以是后缀而不是全等，就是要覆盖各种前缀写法。
     ///
     /// ⚠️ design 列表里**绝不能加 maximumfcc**——iOS 26 日志没有 DesignCapacity 键，
@@ -298,6 +298,11 @@ enum AnalyticsLogParser {
     /// 优先 `message`（CoreAnalytics 格式），再 `batteryhealth`（旧格式），
     /// 最后才考虑对象本身或下钻一层。
     private static func batterySource(in object: [String: Any]) -> [String: Any]? {
+        // 跳过蓝牙配件（耳机 / 充电盒等）电池段——它们不是 iPhone 电池，
+        // 里面的 `cycle_count`（如 734/765/767）会污染 iPhone 的循环次数，
+        // 造成同一天出现几百次的错误循环数。
+        if let name = object["name"] as? String,
+           name.hasPrefix("BT_Accessory_") { return nil }
         if let message = dictValue("message", in: object), hasCoreField(message) { return message }
         if let section = findBatterySection(in: object) { return section }
         if hasCoreField(object) { return object }
