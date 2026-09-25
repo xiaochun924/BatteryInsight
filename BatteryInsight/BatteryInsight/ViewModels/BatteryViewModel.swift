@@ -193,6 +193,8 @@ final class BatteryViewModel: ObservableObject {
 
     func deleteHealth(_ record: HealthRecord) {
         store.deleteHealthRecord(record)
+        // 同步删除同天分析日志，否则重新导入同一份日志会被判为「已存在」
+        store.deleteAnalytics(on: record.date)
         refresh()
     }
 

@@ -90,6 +90,16 @@ final class DataStore: ObservableObject {
         save()
     }
 
+    /// 删除某一天的分析日志记录（删除主页记录时同步调用，
+    /// 否则残留的 analyticsRecords 会让同一份日志重新导入时被判定为「已存在」）。
+    func deleteAnalytics(on date: Date) {
+        let day = Calendar.current.startOfDay(for: date)
+        analyticsRecords.removeAll {
+            Calendar.current.startOfDay(for: $0.date) == day
+        }
+        save()
+    }
+
     // MARK: - 分析日志记录
 
     /// 合并导入的分析记录：按「日期 + 系统健康度」去重，返回新增条数。
