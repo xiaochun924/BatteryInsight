@@ -11,21 +11,19 @@ private struct HealthPoint: Identifiable {
 
 /// 分析日志页：导入 iOS「分析数据」中的 Analytics 日志 → 解析 → 分区块展示。
 ///
-/// 两种导入方式：
-/// - **选文件**（推荐）：在「分析数据」里把 .ips 存到「文件」App，再在这里选中，可多选
-/// - **粘贴文本**：兜底方案，适合只有片段、或不方便存文件的场景
-///
 /// 两个区块刻意分开：
 /// - **原生字段**：iOS 日志里实际写入的值，可信度高
 /// - **衍生指标**：由原生字段推算，口径因 App 而异，故同时展示计算公式
 struct AnalyticsView: View {
     @EnvironmentObject private var vm: BatteryViewModel
 
-    @State private var showingImport = false
-    @State private var showingRawLog: AnalyticsRecord?
-    @State private var showingGuide = false
-    /// 空态页直接选文件用。导入弹窗内部另有一份（见 AnalyticsImportSheet）
+    /// 主入口：点「导入」直接弹文件管理器，一步到位，不再有中间表单
     @State private var showingFileImporter = false
+    /// 次要入口：不方便存文件时才用
+    @State private var showingPaste = false
+    @State private var showingGuide = false
+    @State private var showingResult = false
+    @State private var showingRawLog: AnalyticsRecord?
 
     var body: some View {
         NavigationStack {
@@ -52,18 +50,31 @@ struct AnalyticsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button { showingGuide = true } label: {
-                        Image(systemName: "questionmark.circle")
+                    Menu {
+                        Button { showingGuide = true } label: {
+                            Label("怎么找到日志", systemImage: "questionmark.circle")
+                        }
+                        Button { showingPaste = true } label: {
+                            Label("粘贴日志文本", systemImage: "doc.on.clipboard")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { showingImport = true } label: {
-                        Image(systemName: "square.and.arrow.down")
+                    Button { showingFileImporter = true } label: {
+                        Label("导入", systemImage: "square.and.arrow.down")
                     }
+                    .disabled(vm.isImporting)
                 }
             }
-            .sheet(isPresented: $showingImport) {
-                AnalyticsImportSheet(isPresented: $showingImport)
+            .sheet(isPresented: $showingFileImporter) {
+                AnalyticsFileImporterSheet(isPresented: $showingFileImporter) {
+                    showingResult = true
+                }
+            }
+            .sheet(isPresented: $showingPaste) {
+                PasteImportSheet(isPresented: $showingPaste) { showingResult = true }
             }
             .sheet(item: $showingRawLog) { record in rawSheet(record) }
             .sheet(isPresented: $showingGuide) {
@@ -76,22 +87,13 @@ struct AnalyticsView: View {
                         }
                 }
             }
-            .overlay {
-                if vm.isImporting {
-                    ParsingOverlay(stage: vm.importStage)
-                }
+            .alert("导入结果", isPresented: $showingResult) {
+                Button("好", role: .cancel) { }
+            } message: {
+                Text(vm.importMessage ?? "")
             }
-            // 用 UIKit 选择器而非 .fileImporter：后者在真机 iPhone 上点了文件选不中
-            // 也不关闭（见 DocumentPicker.swift 的说明）
-            .sheet(isPresented: $showingFileImporter) {
-                DocumentPicker(contentTypes: AnalyticsFileImporter.allowedContentTypes,
-                               allowsMultipleSelection: true) { urls in
-                    Task {
-                        let report = await vm.importAnalyticsFiles(urls)
-                        // 读到了文件但没解析出电池数据时，打开导入页展示逐文件原因
-                        if !report.succeeded { showingImport = true }
-                    }
-                }
+            .overlay {
+                if vm.isImporting { ParsingOverlay(stage: vm.importStage) }
             }
         }
     }
@@ -130,8 +132,9 @@ struct AnalyticsView: View {
         } header: {
             Label("系统原生数据", systemImage: "checkmark.seal.fill")
         } footer: {
-            Text("由 iOS 直接写入分析日志，未经任何推算，可信度高。\n"
-                 + "带原始键名的条目（如 AppleRawMaxCapacity、Qmax）是 batteryhealth 中其余数值字段，"
+            Text("由 iOS 直接写入分析日志，未经任何推算，可信度高。每项「口径」括号里"
+                 + "是它在日志中的真实键名，键名因机型 / 系统版本而异。\n"
+                 + "带原始键名的条目是其余数值字段（如 AppleRawMaxCapacity），"
                  + "苹果未公开其含义，这里只原样呈现，不做解读。")
         }
     }
@@ -230,7 +233,7 @@ struct AnalyticsView: View {
                         Text(r.dateText).font(.subheadline)
                         Spacer()
                         if let h = r.systemHealthPercent {
-                            Text(String(format: "系统 %.2f%%", h))
+                            Text(String(format: "系统 %.0f%%", h))
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                     }
@@ -284,36 +287,118 @@ struct AnalyticsView: View {
                 .font(.largeTitle)
                 .foregroundStyle(.secondary)
             Text("还没有导入分析日志").font(.headline)
-            Text("iOS 的「分析数据」里保存着系统写入的电池健康原始记录，\n包含系统健康度、循环次数、实际容量等。\n\n由于系统限制，本 App 无法自动读取，需要你导出后导入。")
+            Text("iOS 的「分析数据」里保存着系统写入的电池健康原始记录，\n"
+                 + "包含系统健康度、循环次数、实际容量等。\n\n"
+                 + "由于系统限制，本 App 无法自动读取，需要你导出后导入。")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-            HStack(spacing: 10) {
-                Button {
-                    showingFileImporter = true
-                } label: {
-                    Label("选择文件", systemImage: "folder.badge.plus")
-                }
-                .buttonStyle(.borderedProminent)
-
-                Button {
-                    showingImport = true
-                } label: {
-                    Label("粘贴文本", systemImage: "square.and.arrow.down")
-                }
-                .buttonStyle(.bordered)
-
-                Button {
-                    showingGuide = true
-                } label: {
-                    Label("怎么找", systemImage: "questionmark.circle")
-                }
-                .buttonStyle(.bordered)
+            Button { showingFileImporter = true } label: {
+                Label("选择日志文件", systemImage: "folder.badge.plus")
+                    .frame(maxWidth: .infinity)
             }
+            .buttonStyle(.borderedProminent)
             .disabled(vm.isImporting)
+
+            Button { showingGuide = true } label: {
+                Label("怎么找到日志？", systemImage: "questionmark.circle")
+            }
+            .font(.footnote)
         }
-        .padding()
+        .padding(32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// MARK: - 文件导入
+
+/// 「导入」一步到位：sheet 里直接就是系统文件管理器。
+///
+/// 两个关键点：
+/// 1. 用 UIKit `UIDocumentPickerViewController` 而不是 SwiftUI `.fileImporter`
+///    ——后者在真机 iPhone 上点了文件选不中也不关闭（见 DocumentPicker.swift）。
+/// 2. 选完 / 取消后**必须把宿主 sheet 一起关掉**。宿主是个透明 VC，
+///    不关就会留一层空白遮罩盖在界面上，看着像"卡住了"。
+struct AnalyticsFileImporterSheet: View {
+    @EnvironmentObject private var vm: BatteryViewModel
+    @Binding var isPresented: Bool
+    /// 解析结束后通知外层弹结果提示（本 sheet 已关闭，alert 得挂在外层）
+    let onFinish: () -> Void
+
+    var body: some View {
+        DocumentPicker(contentTypes: AnalyticsFileImporter.allowedContentTypes,
+                       allowsMultipleSelection: true) { urls in
+            isPresented = false
+            Task {
+                _ = await vm.importAnalyticsFiles(urls)
+                onFinish()
+            }
+        } onCancel: {
+            isPresented = false
+        }
+    }
+}
+
+// MARK: - 粘贴导入（次要入口）
+
+private struct PasteImportSheet: View {
+    @EnvironmentObject private var vm: BatteryViewModel
+    @Binding var isPresented: Bool
+    let onFinish: () -> Void
+
+    @State private var pasteText = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextEditor(text: $pasteText)
+                        .frame(minHeight: 220)
+                        .font(.system(.caption, design: .monospaced))
+                        .overlay(alignment: .topLeading) {
+                            if pasteText.isEmpty {
+                                Text("在此粘贴 Analytics 日志内容…")
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
+                                    .padding(.top, 8)
+                                    .padding(.leading, 4)
+                                    .allowsHitTesting(false)
+                            }
+                        }
+                    Button {
+                        pasteText = UIPasteboard.general.string ?? ""
+                    } label: {
+                        Label("从剪贴板填入", systemImage: "doc.on.clipboard")
+                    }
+                } header: {
+                    Text("粘贴日志文本")
+                } footer: {
+                    Text("不方便存文件时用这个：在「分析数据」里打开 Analytics-*.ips → 全选 → 拷贝 → 回到这里粘贴。")
+                }
+            }
+            .navigationTitle("粘贴导入")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("关闭") { isPresented = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("解析") {
+                        Task {
+                            if await vm.importAnalyticsLog(pasteText) {
+                                isPresented = false
+                                onFinish()
+                            }
+                        }
+                    }
+                    .disabled(pasteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                              || vm.isImporting)
+                }
+            }
+            .overlay {
+                if vm.isImporting { ParsingOverlay(stage: vm.importStage) }
+            }
+        }
     }
 }
 
@@ -339,140 +424,27 @@ private struct ParsingOverlay: View {
             .padding(24)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
         }
-        // 遮罩期间不要再响应下面的按钮，避免重复触发导入
         .allowsHitTesting(true)
-    }
-}
-
-// MARK: - 导入弹窗
-
-/// 独立成一个 View，是为了让文档选择器挂在**本 sheet 自己的视图层级**里。
-/// 之前 `.fileImporter` 挂在外层 NavigationStack 上，而按钮又在 sheet 内 ——
-/// sheet 已经占据了展示层级，外层再弹选择器会被 SwiftUI 静默忽略（点了没反应）。
-private struct AnalyticsImportSheet: View {
-    @EnvironmentObject private var vm: BatteryViewModel
-    @Binding var isPresented: Bool
-
-    @State private var pasteText = ""
-    @State private var showingFileImporter = false
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    Button {
-                        showingFileImporter = true
-                    } label: {
-                        Label("选择日志文件", systemImage: "folder.badge.plus")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-
-                    NavigationLink {
-                        AnalyticsGuideContent()
-                    } label: {
-                        Label("怎么找到这些日志？", systemImage: "questionmark.circle")
-                    }
-                } header: {
-                    Text("方式一：从文件导入（推荐）")
-                } footer: {
-                    Text("先在「分析数据」里把 Analytics-*.ips 分享并存储到「文件」App（或用隔空投送到本机），再在这里选中。可一次选多个文件批量导入，不会漏内容。")
-                }
-
-                Section {
-                    TextEditor(text: $pasteText)
-                        .frame(minHeight: 200)
-                        .font(.system(.caption, design: .monospaced))
-                        .overlay(alignment: .topLeading) {
-                            if pasteText.isEmpty {
-                                Text("在此粘贴 Analytics 日志内容…")
-                                    .font(.caption)
-                                    .foregroundStyle(.tertiary)
-                                    .padding(.top, 8)
-                                    .padding(.leading, 4)
-                                    .allowsHitTesting(false)
-                            }
-                        }
-
-                    Button {
-                        pasteText = UIPasteboard.general.string ?? ""
-                    } label: {
-                        Label("从剪贴板填入", systemImage: "doc.on.clipboard")
-                    }
-                } header: {
-                    Text("方式二：粘贴文本")
-                } footer: {
-                    Text("不方便存文件时用这个：在「分析数据」里打开 Analytics-*.ips → 全选 → 拷贝 → 回到这里粘贴。只需含 batteryhealth 字段的片段即可。")
-                }
-
-                if let msg = vm.importMessage {
-                    Section("解析结果") {
-                        Text(msg)
-                            .font(.footnote)
-                            .foregroundStyle(vm.importSucceeded ? .green : .orange)
-                    }
-                }
-
-                Section {
-                    Button {
-                        Task {
-                            if await vm.importAnalyticsLog(pasteText) {
-                                pasteText = ""
-                            }
-                        }
-                    } label: {
-                        Label("解析并导入", systemImage: "wand.and.stars")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(pasteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                              || vm.isImporting)
-                }
-            }
-            .navigationTitle("导入分析日志")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("关闭") { isPresented = false }
-                }
-            }
-            .overlay {
-                if vm.isImporting {
-                    ParsingOverlay(stage: vm.importStage)
-                }
-            }
-            .sheet(isPresented: $showingFileImporter) {
-                DocumentPicker(contentTypes: AnalyticsFileImporter.allowedContentTypes,
-                               allowsMultipleSelection: true) { urls in
-                    Task {
-                        // 结果直接写进 vm.importMessage，由上面的「解析结果」区展示
-                        _ = await vm.importAnalyticsFiles(urls)
-                    }
-                }
-            }
-        }
     }
 }
 
 // MARK: - 获取指引
 
-/// 指引内容独立出来：在导入弹窗里以 push 方式进入（sheet 上再弹 sheet 同样会被忽略），
-/// 在列表页则以 sheet 方式呈现。
 private struct AnalyticsGuideContent: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 step("1", "打开分析数据", "设置 → 隐私与安全性 → 分析与改进 → 分析数据")
-                step("2", "找到日志文件", "列表里找以 Analytics- 开头的 .ips 文件（如 Analytics-2026-09-19-100000.ips），按日期排序，选最新的一条")
-                step("3", "存到「文件」App（推荐）", "点开文件 → 右上角分享 → 「存储到文件」，挑个位置存下。多存几个不同日期的，趋势图才有意义")
-                step("4", "回到本 App 导入", "点右上角导入按钮 → 「选择日志文件」→ 选中刚才存的文件。也可以在第 3 步直接全选复制文本，走「粘贴文本」")
+                step("2", "找到日志文件", "找以 Analytics- 开头的文件（如 Analytics-2026-09-24-080008.ips）。系统每天生成一份，选最新的那个")
+                step("3", "存到「文件」App", "点开文件 → 右上角分享 → 「存储到文件」。多存几个不同日期的，趋势图才有意义")
+                step("4", "回到本 App 导入", "点右上角「导入」→ 选中刚才存的文件，即可自动解析")
 
                 Divider()
 
                 VStack(alignment: .leading, spacing: 6) {
                     Label("说明", systemImage: "info.circle").font(.headline)
-                    Text("本 App 无法直接读取系统分析日志目录（iOS 沙箱限制，第三方 App 无权限访问）。因此需要你先导出到「文件」App，再由你授权后导入。")
-                    Text("日志中的 batteryhealth 段落并非每次采样都写入，通常几小时到一天出现一次，所以导入多条才能看到趋势。")
+                    Text("本 App 无法直接读取系统分析日志目录（iOS 沙箱限制）。因此需要先导出到「文件」App，再由你授权后导入。")
+                    Text("一天的日志里电池统计可能写入多次，导入时同一天只保留字段最完整的一条。")
                 }
                 .font(.footnote)
                 .foregroundStyle(.secondary)
