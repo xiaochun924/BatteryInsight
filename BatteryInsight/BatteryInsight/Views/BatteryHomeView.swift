@@ -20,6 +20,8 @@ struct BatteryHomeView: View {
     @State private var showingAnalytics = false
     @State private var showingTips = false
     @State private var showingReport = false
+    /// 寿命预测弹窗（趋势卡「详情」按钮打开）
+    @State private var showingLifetime = false
     /// 「导入」一步到位：直接弹系统文件管理器，不再经过中间页
     @State private var showingFileImporter = false
     @State private var showingResult = false
@@ -136,6 +138,7 @@ struct BatteryHomeView: View {
         .sheet(isPresented: $showingAnalytics) { AnalyticsView() }
         .sheet(isPresented: $showingTips) { TipsView() }
         .sheet(isPresented: $showingReport) { BatteryReportView() }
+        .sheet(isPresented: $showingLifetime) { LifetimePredictionView() }
         // 直接从最顶层 VC 弹系统选择器，不再包一层 sheet——
         // 中间层白卡就是"点导入先跳白屏"的来源
         .documentPicker(
@@ -283,26 +286,27 @@ struct BatteryHomeView: View {
                 trendChart
 
                 // 底部摘要行（对应截图：「⚖️ 正常老化 · 约 2 年 9 个月到 80%」+ 右侧「详情」入口）
-                if let summary = summaryText {
-                    HStack(spacing: 6) {
+                HStack(spacing: 6) {
+                    if let summary = summaryText {
                         Image(systemName: "scalemass")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                         Text(summary)
                             .font(.footnote)
                             .foregroundStyle(.secondary)
-                        Spacer()
-                        Button { showingAnalytics = true } label: {
-                            Text("详情")
-                                .font(.footnote.bold())
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 5)
-                                .background(.quaternary, in: Capsule())
-                        }
-                        .buttonStyle(.plain)
                     }
-                    .padding(.top, 2)
+                    Spacer()
+                    // 「详情」始终可点：弹出寿命预测界面（截图样式）
+                    Button { showingLifetime = true } label: {
+                        Text("详情")
+                            .font(.footnote.bold())
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(.quaternary, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
                 }
+                .padding(.top, 2)
             }
             .padding(.vertical, 4)
         } header: {
@@ -412,56 +416,72 @@ struct BatteryHomeView: View {
     }
 
     private func recordCard(_ record: HealthRecord) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: "iphone.gen3")
-                .font(.title3)
-                .foregroundStyle(.green)
-                .frame(width: 40, height: 40)
-                .background(Color.green.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
-
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 8) {
-                    Label(String(format: "%.1f", record.maximumCapacity) + " %",
-                          systemImage: "battery.100")
-                        .font(.subheadline.bold())
-                        .foregroundStyle(healthTint(record.maximumCapacity))
-                    if let cycles = record.cycleCount {
-                        Text("·")
-                            .foregroundStyle(.quaternary)
-                        Label("\(cycles) 次", systemImage: "arrow.2.circlepath")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                HStack(spacing: 6) {
-                    // 评级徽章（对应截图的「良好 / 一般」）
-                    let grade = rating(record.maximumCapacity)
-                    Text(grade.text)
-                        .font(.caption2.bold())
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 2)
-                        .background(grade.color.opacity(0.15), in: Capsule())
-                        .foregroundStyle(grade.color)
-                    if let note = record.note, !note.isEmpty {
-                        Text(note)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
+        // 同一天的分析日志（温度 / 循环 / 累计运行时长的数据源）
+        let analytics = analyticsFor(record)
+        return HStack(alignment: .center, spacing: 8) {
+            // 列1：健康度 + 估算温度（截图对应「健康 101.60% / 15个应用卡顿」；
+            // 卡顿无数据源，用估算温度占位）
+            VStack(alignment: .leading, spacing: 6) {
+                Text("健康 " + String(format: "%.2f", record.maximumCapacity) + "%")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(healthTint(record.maximumCapacity))
+                if let temp = analytics?.temperature {
+                    Text("约 \(String(format: "%.0f", temp))℃")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("温度 --")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            Spacer()
+            // 列2：循环次数 + 评级徽章（截图对应「充电 91次 / 一般」）
+            VStack(alignment: .leading, spacing: 6) {
+                Text("循环 \(record.cycleCount ?? analytics?.cycleCount ?? 0) 次")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(.primary)
+                let grade = rating(record.maximumCapacity)
+                Text(grade.text)
+                    .font(.caption2.bold())
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2)
+                    .background(grade.color.opacity(0.15), in: Capsule())
+                    .foregroundStyle(grade.color)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            // 日期徽章（对应截图的「09/23」）
-            Text(record.date.chineseDateText)
-                .font(.caption.bold())
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(.quaternary, in: Capsule())
-                .foregroundStyle(.secondary)
+            // 列3：日期徽章 + 累计运行时长（截图对应「09/24 / 4时10分」；
+            // 日志只有累计运行时间，超过 24h 折成天显示）
+            VStack(alignment: .trailing, spacing: 6) {
+                Text(record.date.chineseDateText)
+                    .font(.caption.bold())
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(.quaternary, in: Capsule())
+                    .foregroundStyle(.secondary)
+                if let hours = analytics?.totalOperatingHours {
+                    Text(runtimeText(hours))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("--")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 6)
+    }
+
+    /// 累计运行时长文案：≥24h 折成「X 天」，否则「X 小时」
+    private func runtimeText(_ hours: Double) -> String {
+        if hours >= 24 {
+            return "\(Int(hours / 24)) 天"
+        }
+        return "\(Int(hours)) 小时"
     }
 
     private func rating(_ health: Double) -> (text: String, color: Color) {
