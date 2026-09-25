@@ -156,7 +156,7 @@ struct BatteryHomeView: View {
                 infoRow(
                     icon: "battery.100", tint: healthTint(record.maximumCapacity),
                     title: "电池健康度",
-                    accessory: valueText(String(format: "%.0f", record.maximumCapacity) + " %",
+                    accessory: valueText(String(format: "%.1f", record.maximumCapacity) + " %",
                                          color: healthTint(record.maximumCapacity)))
             }
             if let cycles = latest?.cycleCount ?? latestAnalytics?.cycleCount {
@@ -182,7 +182,7 @@ struct BatteryHomeView: View {
                 infoRow(
                     icon: "calendar", tint: .gray,
                     title: "最近检测",
-                    accessory: valueText(date.formatted(.dateTime.month().day()), color: .secondary))
+                    accessory: valueText(date.chineseDateText, color: .secondary))
             }
         } header: {
             Text("设备信息")
@@ -340,7 +340,7 @@ struct BatteryHomeView: View {
             let duration = rest > 0 ? "约 \(years) 年 \(rest) 个月" : "约 \(years) 年"
             return "\(state) · \(duration)到 80%"
         }
-        return "\(state) · 约 \(Int(months)) 个月到 80%（当前 \(String(format: "%.0f", latest.maximumCapacity))%）"
+        return "\(state) · 约 \(Int(months)) 个月到 80%（当前 \(String(format: "%.1f", latest.maximumCapacity))%）"
     }
 
     // MARK: - 检测记录（参考截图底部的每日卡片）
@@ -378,7 +378,7 @@ struct BatteryHomeView: View {
 
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 8) {
-                    Label(String(format: "%.0f", record.maximumCapacity) + " %",
+                    Label(String(format: "%.1f", record.maximumCapacity) + " %",
                           systemImage: "battery.100")
                         .font(.subheadline.bold())
                         .foregroundStyle(healthTint(record.maximumCapacity))
@@ -411,7 +411,7 @@ struct BatteryHomeView: View {
             Spacer()
 
             // 日期徽章（对应截图的「09/23」）
-            Text(record.date.formatted(.dateTime.month().day()))
+            Text(record.date.chineseDateText)
                 .font(.caption.bold())
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
