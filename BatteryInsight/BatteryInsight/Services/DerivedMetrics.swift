@@ -57,7 +57,7 @@ enum DerivedMetrics {
         let pct = Double(nominal) / Double(design) * 100
         return DerivedMetric(
             title: "计算健康度",
-            value: String(format: "%.2f", pct),
+            value: String(format: "%.1f", pct),
             unit: "%",
             icon: "function",
             formula: "当前实际容量 ÷ 出厂容量 × 100%",
@@ -199,7 +199,7 @@ enum DerivedMetrics {
         var out: [DerivedMetric] = []
         if let h = record.systemHealthPercent {
             out.append(DerivedMetric(
-                title: "系统健康度", value: format(h), unit: "%",
+                title: "系统健康度", value: String(format: "%.1f", h), unit: "%",
                 icon: "checkmark.seal",
                 formula: source("health", in: record, fallback: "MaximumCapacityPercent"),
                 basis: "日志原生字段"))
