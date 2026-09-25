@@ -30,6 +30,11 @@ struct AnalyticsRecord: Codable, Identifiable, Equatable, Sendable {
     /// 不同机型 / 系统版本写入的字段集合本就不一样，这里「系统写什么就存什么」，
     /// 既不臆造含义，也不因为没建模而丢数据。
     var extraFields: [String: Double]
+    /// 每个字段**实际取自日志里的哪个键**（如 `last_value_CycleCount`）。
+    ///
+    /// 键名前缀因机型 / 系统版本而异，记下真实键名才能核对"数字到底从哪来的"，
+    /// 而不是让 UI 永远显示一个写死的推测值。
+    var fieldSources: [String: String]
 
     init(id: UUID = UUID(),
          date: Date,
@@ -40,7 +45,8 @@ struct AnalyticsRecord: Codable, Identifiable, Equatable, Sendable {
          voltage: Double? = nil,
          temperature: Double? = nil,
          rawSnippet: String = "",
-         extraFields: [String: Double] = [:]) {
+         extraFields: [String: Double] = [:],
+         fieldSources: [String: String] = [:]) {
         self.id = id
         self.date = date
         self.systemHealthPercent = systemHealthPercent
@@ -51,14 +57,15 @@ struct AnalyticsRecord: Codable, Identifiable, Equatable, Sendable {
         self.temperature = temperature
         self.rawSnippet = rawSnippet
         self.extraFields = extraFields
+        self.fieldSources = fieldSources
     }
 
     // MARK: - Codable
 
-    // 自定义解码只为兼容旧版本已落盘的数据（当时还没有 extraFields）
+    // 自定义解码只为兼容旧版本已落盘的数据（当时还没有 extraFields / fieldSources）
     private enum CodingKeys: String, CodingKey {
         case id, date, systemHealthPercent, cycleCount, nominalChargeCapacity,
-             designCapacity, voltage, temperature, rawSnippet, extraFields
+             designCapacity, voltage, temperature, rawSnippet, extraFields, fieldSources
     }
 
     init(from decoder: Decoder) throws {
@@ -73,6 +80,16 @@ struct AnalyticsRecord: Codable, Identifiable, Equatable, Sendable {
         temperature = try? c.decode(Double.self, forKey: .temperature)
         rawSnippet = (try? c.decode(String.self, forKey: .rawSnippet)) ?? ""
         extraFields = (try? c.decode([String: Double].self, forKey: .extraFields)) ?? [:]
+        fieldSources = (try? c.decode([String: String].self, forKey: .fieldSources)) ?? [:]
+    }
+
+    /// 是否含核心电池指标（健康度 / 循环 / 容量）。
+    ///
+    /// 只有电压或温度不算——那说明抓到的是日志里别的段落（温控、功耗），
+    /// 当成电池记录入库会污染趋势图。
+    var hasCoreMetric: Bool {
+        systemHealthPercent != nil || cycleCount != nil
+            || nominalChargeCapacity != nil || designCapacity != nil
     }
 
     var dateText: String {
