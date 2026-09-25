@@ -30,8 +30,16 @@ enum AnalyticsLogParser {
 
     // MARK: - 字段语义
 
-    private enum Field {
+    enum Field {
         case health, cycle, nominal, design, voltage, temperature, rawMax
+        // iOS 26 BatteryConfigValueHistogram 键集（已与真实日志逐值核对）
+        case minFCC, maxFCC
+        case minQmax, maxQmax, qmaxCell0
+        case minPackV, maxPackV
+        case chargeCurrent, dischargeCurrent
+        case minTemp, maxTemp, avgTemp
+        case dailyMinSoc, dailyMaxSoc
+        case operatingTime, updateTime
     }
 
     private struct Pick {
@@ -49,15 +57,52 @@ enum AnalyticsLogParser {
 
     /// 候选键名后缀（按优先级）：命中第一个「后缀匹配且数值合理」的为止。
     /// 之所以是后缀而不是全等，就是要覆盖各种前缀写法。
+    ///
+    /// ⚠️ design 列表里**绝不能加 maximumfcc**——iOS 26 日志没有 DesignCapacity 键，
+    /// 加了兜底就会抓到 last_value_MaximumFCC（当天满充容量上限，比如 4976），
+    /// 被当成出厂容量，健康度计算全错（这正是历史上"出厂容量 4976"的来源）。
     private static let healthKeys  = ["maximumcapacitypercent", "capacitypercent",
                                       "maximumcapacitypct", "systemhealthpercent"]
     private static let cycleKeys   = ["cyclecount", "batterycyclecount",
                                       "cyclecounttotal", "totalcyclecount"]
     private static let nominalKeys = ["nominalchargecapacity", "nominalcapacity"]
-    private static let designKeys  = ["designcapacity", "designchargecapacity", "maximumfcc"]
+    private static let designKeys  = ["designcapacity", "designchargecapacity"]
     private static let rawMaxKeys  = ["rawmaxcapacity"]
-    private static let voltageKeys = ["voltage", "batteryvoltage"]
-    private static let tempKeys    = ["temperature", "averagetemperature", "batterytemperature"]
+    private static let voltageKeys = ["packvoltage"]
+    private static let tempKeys    = ["averagetemperature"]
+
+    private static func candidates(for field: Field) -> [String] {
+        switch field {
+        case .health: return healthKeys
+        case .cycle: return cycleKeys
+        case .nominal: return nominalKeys
+        case .design: return designKeys
+        case .rawMax: return rawMaxKeys
+        case .voltage: return voltageKeys
+        case .temperature: return tempKeys
+        default: return []
+        }
+    }
+
+    /// 已验证的精确键（归一化后按后缀匹配，键名来自真实日志样本，不做臆测）：
+    /// 温度原始值 0.1℃、电压 mV、电流 mA、运行时间 0.1h、更新时间 Unix 秒。
+    private static let exactKeys: [Field: [String]] = [
+        .minFCC: ["minimumfcc"],
+        .maxFCC: ["maximumfcc"],
+        .minQmax: ["minimumqmax"],
+        .maxQmax: ["maximumqmax"],
+        .qmaxCell0: ["qmaxcell0"],
+        .minPackV: ["minimumpackvoltage"],
+        .maxPackV: ["maximumpackvoltage"],
+        .chargeCurrent: ["maximumchargecurrent"],
+        .dischargeCurrent: ["maximumdischargecurrent"],
+        .minTemp: ["minimumtemperature"],
+        .maxTemp: ["maximumtemperature"],
+        .dailyMinSoc: ["dailyminsoc", "minimumchargesoc"],
+        .dailyMaxSoc: ["dailymaxsoc", "maximumchargesoc"],
+        .operatingTime: ["totaloperatingtime"],
+        .updateTime: ["updatetime"],
+    ]
 
     private static func candidates(for field: Field) -> [String] {
         switch field {
@@ -72,9 +117,14 @@ enum AnalyticsLogParser {
     }
 
     /// 判断某个键对应哪个字段；不属于电池字段则返回 nil
-    private static func field(of key: String) -> Field? {
+    /// （UI 也会用它判断某键是否已被单独展示）
+    static func field(of key: String) -> Field? {
         let n = normalized(key)
         guard !n.isEmpty else { return nil }
+        // 精确键优先（避免 minimumpackvoltage 被 voltage 抢走之类）
+        for (f, keys) in exactKeys where keys.contains(where: { n.hasSuffix($0) }) {
+            return f
+        }
         // 顺序有讲究：nominalchargecapacity 不能被 designcapacity 抢走，
         // maximumcapacitypercent 也不能因为含 capacity 被当成容量
         for f in [Field.health, .nominal, .design, .cycle, .rawMax, .voltage, .temperature] {
@@ -86,18 +136,24 @@ enum AnalyticsLogParser {
     private static func isCore(_ field: Field) -> Bool {
         switch field {
         case .health, .cycle, .nominal, .design: return true
-        case .voltage, .temperature, .rawMax: return false
+        default: return false
         }
     }
 
     /// 数值合理性。抓错键会给出一个看起来合理的错数字，所以按物理量级再兜一层。
+    /// 单位均为日志原始单位（温度 0.1℃、电压 mV、电流 mA、时间 0.1h）。
     private static func plausible(_ field: Field, _ v: Double) -> Bool {
         switch field {
-        case .health: return v >= 1 && v <= 150
+        case .health, .dailyMinSoc, .dailyMaxSoc: return v >= 1 && v <= 150
         case .cycle: return v >= 0 && v <= 10000
-        case .nominal, .design, .rawMax: return v >= 100 && v <= 20000
-        case .voltage: return v > 0 && v <= 10
+        case .nominal, .design, .rawMax, .minFCC, .maxFCC,
+             .minQmax, .maxQmax, .qmaxCell0: return v >= 100 && v <= 20000
+        case .minPackV, .maxPackV, .voltage: return v >= 2000 && v <= 6000
+        case .chargeCurrent, .dischargeCurrent: return abs(v) >= 10 && abs(v) <= 20000
+        case .minTemp, .maxTemp: return v >= -500 && v <= 1500
         case .temperature: return v >= -50 && v <= 150
+        case .operatingTime: return v >= 0 && v <= 100_000_000
+        case .updateTime: return v >= 1_000_000_000 && v <= 5_000_000_000
         }
     }
 
@@ -311,6 +367,20 @@ enum AnalyticsLogParser {
         return nil
     }
 
+    /// 精确键取值（用于 MinimumFCC / PackVoltage 等已验证字段）
+    private static func pickExact(_ field: Field, in dict: [String: Any]) -> Pick? {
+        guard let keys = exactKeys[field] else { return nil }
+        for candidate in keys {
+            for (key, value) in dict {
+                guard normalized(key).hasSuffix(candidate),
+                      let v = numeric(value),
+                      plausible(field, v) else { continue }
+                return Pick(key: key, value: v)
+            }
+        }
+        return nil
+    }
+
     /// JSON 数值可能是 NSNumber，也可能是带引号的字符串
     private static func numeric(_ any: Any?) -> Double? {
         guard let any = any else { return nil }
@@ -331,8 +401,8 @@ enum AnalyticsLogParser {
         let cycle = pick(.cycle, in: source)
         let nominal = pick(.nominal, in: source)
         let design = pick(.design, in: source)
-        let voltage = pick(.voltage, in: source)
-        let temperature = pick(.temperature, in: source)
+
+        func exact(_ f: Field) -> Double? { pickExact(f, in: source)?.value }
 
         // 记下每个字段实际取自哪个键，UI 上如实展示，便于核对
         var sources: [String: String] = [:]
@@ -340,17 +410,34 @@ enum AnalyticsLogParser {
         if let p = cycle { sources["cycle"] = p.key }
         if let p = nominal { sources["nominal"] = p.key }
         if let p = design { sources["design"] = p.key }
-        if let p = voltage { sources["voltage"] = p.key }
-        if let p = temperature { sources["temperature"] = p.key }
+        if let p = pickExact(.rawMax, in: source) { sources["rawMax"] = p.key }
 
+        // 单位换算：电压 mV → V；电流 mA → A（放电为负值，取绝对值）；
+        // 温度 0.1℃ → ℃；运行时间 0.1h → h；更新时间 Unix 秒 → Date
         let record = AnalyticsRecord(
             date: date,
             systemHealthPercent: health?.value,
             cycleCount: cycle.map { Int($0.value.rounded()) },
             nominalChargeCapacity: nominal.map { Int($0.value.rounded()) },
             designCapacity: design.map { Int($0.value.rounded()) },
-            voltage: voltage?.value,
-            temperature: temperature?.value,
+            rawMaxCapacity: pickExact(.rawMax, in: source).map { Int($0.value.rounded()) },
+            minFCC: exact(.minFCC).map { Int($0.rounded()) },
+            maxFCC: exact(.maxFCC).map { Int($0.rounded()) },
+            minQmax: exact(.minQmax).map { Int($0.rounded()) },
+            maxQmax: exact(.maxQmax).map { Int($0.rounded()) },
+            qmaxCell0: exact(.qmaxCell0).map { Int($0.rounded()) },
+            minPackVoltage: exact(.minPackV).map { $0 / 1000 },
+            maxPackVoltage: exact(.maxPackV).map { $0 / 1000 },
+            maxChargeCurrent: exact(.chargeCurrent).map { abs($0) / 1000 },
+            maxDischargeCurrent: exact(.dischargeCurrent).map { abs($0) / 1000 },
+            minTemperature: exact(.minTemp).map { $0 / 10 },
+            maxTemperature: exact(.maxTemp).map { $0 / 10 },
+            dailyMinSoc: exact(.dailyMinSoc).map { Int($0.rounded()) },
+            dailyMaxSoc: exact(.dailyMaxSoc).map { Int($0.rounded()) },
+            totalOperatingHours: exact(.operatingTime).map { $0 / 10 },
+            lastUpdateTime: exact(.updateTime).map { Date(timeIntervalSince1970: $0) },
+            voltage: pick(.voltage, in: source).map { $0.value / 1000 },
+            temperature: pick(.temperature, in: source).map { $0.value },
             rawSnippet: String(raw.prefix(4000)),
             extraFields: extraFields(in: source),
             fieldSources: sources)
@@ -364,9 +451,11 @@ enum AnalyticsLogParser {
         if r.systemHealthPercent != nil { score += 4 }
         if r.cycleCount != nil { score += 4 }
         if r.nominalChargeCapacity != nil { score += 3 }
-        if r.designCapacity != nil { score += 3 }
-        if r.voltage != nil { score += 1 }
-        if r.temperature != nil { score += 1 }
+        if r.rawMaxCapacity != nil { score += 2 }
+        if r.maxFCC != nil { score += 2 }
+        if r.designCapacity != nil { score += 1 }
+        if r.maxPackVoltage != nil { score += 1 }
+        if r.maxTemperature != nil { score += 1 }
         return score + min(r.extraFields.count, 10)
     }
 
@@ -384,9 +473,12 @@ enum AnalyticsLogParser {
     }
 
     private static func isModeled(_ key: String) -> Bool {
-        let n = normalized(key)
-        let all = healthKeys + cycleKeys + nominalKeys + designKeys + voltageKeys + tempKeys
-        return all.contains { n.hasSuffix($0) }
+        classifies(key)
+    }
+
+    /// 该键是否已被解析器归类（UI 据此避免重复展示）
+    static func classifies(_ key: String) -> Bool {
+        field(of: key) != nil
     }
 
     // MARK: - 时间戳
@@ -457,7 +549,7 @@ enum AnalyticsLogParser {
                     if voltage == nil { voltage = pair.value; sources["voltage"] = pair.key }
                 case .temperature:
                     if temperature == nil { temperature = pair.value; sources["temperature"] = pair.key }
-                case .rawMax:
+                default:
                     extras[pair.key] = pair.value
                 }
             }
@@ -468,7 +560,7 @@ enum AnalyticsLogParser {
                 cycleCount: cycle.map { Int($0.rounded()) },
                 nominalChargeCapacity: nominal.map { Int($0.rounded()) },
                 designCapacity: design.map { Int($0.rounded()) },
-                voltage: voltage,
+                voltage: voltage.map { $0 / 1000 },
                 temperature: temperature,
                 rawSnippet: snippet(around: group, in: text),
                 extraFields: extras,
