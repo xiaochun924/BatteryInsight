@@ -1,5 +1,32 @@
 import SwiftUI
 
+// MARK: - 中文日期
+
+/// 日期一律用中文格式显示（如「9月23日」）。
+///
+/// 为什么不用 `.formatted(.dateTime.month().day())`：那会跟随设备语言/地区，
+/// 英文环境下渲染成 "Sep 23"，与中文界面不一致。这里固定 zh_CN 本地化。
+extension Date {
+    private static let cnMonthDay: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "zh_CN")
+        f.dateFormat = "M月d日"
+        return f
+    }()
+
+    private static let cnFull: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "zh_CN")
+        f.dateFormat = "yyyy年M月d日 HH:mm"
+        return f
+    }()
+
+    /// 「9月23日」
+    var chineseDateText: String { Date.cnMonthDay.string(from: self) }
+    /// 「2026年9月23日 08:00」
+    var chineseDateTimeText: String { Date.cnFull.string(from: self) }
+}
+
 /// 指标卡片。原先定义在 DashboardView 里，随概览页一起删除会连带弄丢，
 /// 故抽到独立文件供健康 / 趋势复用。
 struct MetricCard: View {
