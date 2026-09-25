@@ -30,7 +30,7 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
-        CFBundleDisplayName: 电池洞察
+        CFBundleDisplayName: BatteryInsight
         CFBundleDevelopmentRegion: zh_CN
         # ══ 让本 App 出现在「文件」App / 分享菜单的「用其他应用打开」列表里 ══
         # 注意：这些必须写在 project.yml 的 info.properties 里才会进最终包。

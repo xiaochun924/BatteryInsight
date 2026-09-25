@@ -5,7 +5,7 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>zh_CN</string>
     <key>CFBundleDisplayName</key>
-    <string>电池洞察</string>
+    <string>BatteryInsight</string>
     <key>CFBundleName</key>
     <string>BatteryInsight</string>
     <key>CFBundleExecutable</key>
