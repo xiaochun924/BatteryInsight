@@ -71,6 +71,8 @@ enum AnalyticsLogParser {
     private static let voltageKeys = ["packvoltage"]
     private static let tempKeys    = ["averagetemperature"]
 
+    /// 候选键名：只有「后缀匹配」类字段在这里给候选列表；其余精确字段走 exactKeys。
+    /// 注意带 default 兜底：未列出的 Field 返回空数组，switch 保持穷尽。
     private static func candidates(for field: Field) -> [String] {
         switch field {
         case .health: return healthKeys
@@ -103,18 +105,6 @@ enum AnalyticsLogParser {
         .operatingTime: ["totaloperatingtime"],
         .updateTime: ["updatetime"],
     ]
-
-    private static func candidates(for field: Field) -> [String] {
-        switch field {
-        case .health: return healthKeys
-        case .cycle: return cycleKeys
-        case .nominal: return nominalKeys
-        case .design: return designKeys
-        case .rawMax: return rawMaxKeys
-        case .voltage: return voltageKeys
-        case .temperature: return tempKeys
-        }
-    }
 
     /// 判断某个键对应哪个字段；不属于电池字段则返回 nil
     /// （UI 也会用它判断某键是否已被单独展示）
