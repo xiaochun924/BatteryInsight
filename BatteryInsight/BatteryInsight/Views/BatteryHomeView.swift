@@ -317,13 +317,14 @@ struct BatteryHomeView: View {
         metric == .health ? String(format: "%.1f", value) : "\(Int(value))"
     }
 
-    /// Y 轴范围：健康度固定 70~100；容量按数据自适应并留出余量（也给标签留空间）
+    /// Y 轴范围：健康度固定 70~100；容量按数据自适应并留出余量（也给标签留空间）。
+    /// 注意局部变量不能叫 min/max——会遮蔽同名系统函数导致编译错误
     private func yDomain(for points: [(date: Date, value: Double)]) -> ClosedRange<Double> {
         if metric == .health { return 70...100 }
-        guard let min = points.map(\.value).min(),
-              let max = points.map(\.value).max() else { return 0...100 }
-        let pad = max(50, (max - min) * 0.3)
-        return max(0, min - pad)...(max + pad)
+        guard let lo = points.map(\.value).min(),
+              let hi = points.map(\.value).max() else { return 0...100 }
+        let pad = Swift.max(50, (hi - lo) * 0.3)
+        return Swift.max(0, lo - pad)...(hi + pad)
     }
 
     /// 底部摘要：按当前衰减速率估算降到 80% 的时间
@@ -379,13 +380,13 @@ struct BatteryHomeView: View {
                 }
                 HStack(spacing: 6) {
                     // 评级徽章（对应截图的「良好 / 一般」）
-                    Text(rating(for: record.maximumCapacity).text)
+                    let grade = rating(record.maximumCapacity)
+                    Text(grade.text)
                         .font(.caption2.bold())
                         .padding(.horizontal, 7)
                         .padding(.vertical, 2)
-                        .background(rating(for: record.maximumCapacity).color.opacity(0.15),
-                                    in: Capsule())
-                        .foregroundStyle(rating(for: record.maximumCapacity).color)
+                        .background(grade.color.opacity(0.15), in: Capsule())
+                        .foregroundStyle(grade.color)
                     if let note = record.note, !note.isEmpty {
                         Text(note)
                             .font(.caption)
