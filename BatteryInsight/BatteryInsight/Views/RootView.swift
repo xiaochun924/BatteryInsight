@@ -2,18 +2,45 @@ import SwiftUI
 
 /// 应用根视图。
 ///
-/// 原先这里是「概览 / 趋势 / 充电 / 健康」四个 Tab。现在只剩一页
-/// 「电池健康」，TabView 没有意义了，直接用 NavigationStack：
-/// 单 Tab 会在底部留一条只有一个胶囊的空 Tab Bar，反而占地方。
+/// 两个 Tab 页面，功能分开显示：
+///   - 「电池健康」：设备信息 / 健康趋势 / 检测记录（BatteryHomeView）
+///   - 「充电功率」：实时充电检测 / 充电统计 / 充电会话（ChargingPowerView）
+///
+/// 之前「概览 / 趋势 / 充电 / 健康」四个 Tab 被砍成只剩单页，
+/// 现在按需求恢复为「电池健康 + 充电功率」两个独立页面。
 struct RootView: View {
     @StateObject private var vm = BatteryViewModel()
     @Environment(\.scenePhase) private var scenePhase
     /// 从「文件」App / 分享菜单用本 App 打开日志后的解析结果
     @State private var showingOpenResult = false
+    /// 当前选中的 Tab
+    @State private var selectedTab: HomeTab = .health
+
+    enum HomeTab: String, CaseIterable, Identifiable {
+        case health = "电池健康"
+        case power  = "充电功率"
+        var id: String { rawValue }
+        var icon: String {
+            switch self {
+            case .health: return "heart.fill"
+            case .power:  return "bolt.fill"
+            }
+        }
+    }
 
     var body: some View {
-        NavigationStack {
-            BatteryHomeView()
+        TabView(selection: $selectedTab) {
+            NavigationStack {
+                BatteryHomeView()
+            }
+            .tabItem { Label(HomeTab.health.rawValue, systemImage: HomeTab.health.icon) }
+            .tag(HomeTab.health)
+
+            NavigationStack {
+                ChargingPowerView()
+            }
+            .tabItem { Label(HomeTab.power.rawValue, systemImage: HomeTab.power.icon) }
+            .tag(HomeTab.power)
         }
         .environmentObject(vm)
         .onChange(of: scenePhase) { phase in

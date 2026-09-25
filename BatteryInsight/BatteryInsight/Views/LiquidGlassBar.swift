@@ -8,7 +8,8 @@ import SwiftUI
 /// - 完全隐藏系统导航栏（`.toolbar(.hidden, for: .navigationBar)`），
 ///   顶部只留下真正的内容，不给系统导航栏留空间。
 /// - 左上角圆形玻璃返回按钮（仅非根页面 / 可关闭页面显示）。
-/// - 中间悬浮玻璃胶囊标题。
+/// - 中间悬浮玻璃胶囊标题：**恒定居中**——用 ZStack 把标题放在整行正中，
+///   左右两侧按钮宽度不一致也不会把标题挤偏。
 /// - 纯透明背景，**不加白色蒙皮 / 磨砂遮挡层**——让内容直接浮在玻璃上。
 ///
 /// 用法：`.liquidGlassTopBar(title: "电池健康", leading: { … }, trailing: { … })`
@@ -37,8 +38,21 @@ struct LiquidGlassTopBar: ViewModifier {
 
     @ViewBuilder
     private var bar: some View {
-        HStack(spacing: 10) {
-            // 左侧组合：返回按钮 + 自定义槽位（如主页面左上角菜单）
+        ZStack {
+            // 中间悬浮玻璃胶囊标题：ZStack 默认居中，标题始终在整行正中，
+            // 不参与左右 HStack 的宽度分配，左右按钮再宽也不会把它挤偏。
+            Text(title)
+                .font(.headline)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(.ultraThinMaterial, in: Capsule())
+                .overlay(Capsule().strokeBorder(.white.opacity(0.25), lineWidth: 0.5))
+                .shadow(color: .black.opacity(0.08), radius: 10, y: 4)
+                .allowsHitTesting(false)
+
+            // 左侧组合：返回按钮 + 自定义槽位（如主页面左上角菜单），靠左对齐
             HStack(spacing: 10) {
                 if showsBackButton {
                     glassButton(systemName: "chevron.left") {
@@ -49,23 +63,15 @@ struct LiquidGlassTopBar: ViewModifier {
                 if let leading {
                     leading()
                 }
+                Spacer(minLength: 0)
             }
 
-            // 中间悬浮玻璃胶囊标题：被左右两个 Spacer 夹紧，真正居中
-            Spacer(minLength: 8)
-            Text(title)
-                .font(.headline)
-                .lineLimit(1)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(.ultraThinMaterial, in: Capsule())
-                .overlay(Capsule().strokeBorder(.white.opacity(0.25), lineWidth: 0.5))
-                .shadow(color: .black.opacity(0.08), radius: 10, y: 4)
-            Spacer(minLength: 8)
-
-            // 右侧自定义槽位
-            if let trailing {
-                trailing()
+            // 右侧自定义槽位，靠右对齐
+            HStack(spacing: 10) {
+                Spacer(minLength: 0)
+                if let trailing {
+                    trailing()
+                }
             }
         }
         .padding(.horizontal, 12)
