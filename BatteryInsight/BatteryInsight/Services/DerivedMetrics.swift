@@ -200,15 +200,9 @@ enum DerivedMetrics {
     /// 每项都标出**实际取自哪个键**——键名前缀因机型 / 系统版本而异
     /// （`last_value_CycleCount`、`cycle_count`、`CycleCount`…），
     /// 写死一个推测值会让人无法核对数字来源。
+    /// 系统写入的 MaximumCapacityPercent 不再展示：健康度一律用计算口径。
     static func nativeMetrics(from record: AnalyticsRecord) -> [DerivedMetric] {
         var out: [DerivedMetric] = []
-        if let h = record.systemHealthPercent {
-            out.append(DerivedMetric(
-                title: "系统健康度", value: String(format: "%.1f", h), unit: "%",
-                icon: "checkmark.seal",
-                formula: source("health", in: record, fallback: "MaximumCapacityPercent"),
-                basis: "日志原生字段"))
-        }
         if let c = record.cycleCount {
             out.append(DerivedMetric(
                 title: "循环次数", value: "\(c)", unit: "次",

@@ -5,7 +5,7 @@ import UIKit
 ///
 /// - 标题：「9月23日 电池记录」
 /// - 顶部「电池数据 / 其他数据」分段切换：
-///   - **电池数据**：电池健康卡（系统健康度 / 计算健康度 / 循环次数）+ 核心数据卡
+///   - **电池数据**：电池健康卡（计算健康度 / 循环次数）+ 核心数据卡
 ///     （实时容量 / 出厂容量 / 温度）
 ///   - **其他数据**：对齐竞品口径的解读字段（满充容量范围、Qmax、电压范围、电流峰值、
 ///     温度区间、每日 SOC、累计运行时间……），映射关系均经真实日志逐值核对。
@@ -91,13 +91,7 @@ struct RecordDetailView: View {
         Group {
             Section {
                 headerLabel("电池健康", icon: "heart.fill", tint: .green)
-                // 手动记录优先；没有手动值时退回日志里的系统健康度
-                let h = record.maximumCapacity > 0
-                    ? Optional(record.maximumCapacity)
-                    : analytics?.systemHealthPercent
-                if let h {
-                    row("系统健康度", valueText: String(format: "%.1f", h) + " %", tint: .green)
-                }
+                // 健康度一律用「计算健康度」（额定容量 ÷ 出厂容量），不再显示系统健康度
                 if let nominal = analytics?.nominalChargeCapacity,
                    let factory = factoryCapacity, factory > 0 {
                     row("计算健康度", valueText: String(format: "%.1f", Double(nominal) / Double(factory) * 100) + " %",
@@ -111,7 +105,7 @@ struct RecordDetailView: View {
                     row("备注", valueText: note, tint: .gray)
                 }
             } footer: {
-                Text("计算健康度 = 出厂容量 ÷ 额定容量，与系统健康度口径不同，仅供参考对比。")
+                Text("计算健康度 = 额定容量 ÷ 出厂容量（出厂容量按机型取官方标称），仅供参考。")
             }
 
             Section {
@@ -307,7 +301,7 @@ struct RecordDetailView: View {
     private var shareText: String {
         var lines: [String] = [titleText]
         if record.maximumCapacity > 0 {
-            lines.append("系统健康度：\(String(format: "%.1f", record.maximumCapacity))%")
+            lines.append("健康度：\(String(format: "%.1f", record.maximumCapacity))%")
         }
         if let cycles = record.cycleCount ?? analytics?.cycleCount {
             lines.append("循环次数：\(cycles)")
