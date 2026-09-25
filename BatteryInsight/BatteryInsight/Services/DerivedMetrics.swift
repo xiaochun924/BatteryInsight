@@ -213,14 +213,21 @@ enum DerivedMetrics {
         }
         if let n = record.nominalChargeCapacity {
             out.append(DerivedMetric(
-                title: "当前实际容量", value: "\(n)", unit: "mAh",
+                title: "出厂容量（标称）", value: "\(n)", unit: "mAh",
                 icon: "battery.100",
                 formula: source("nominal", in: record, fallback: "NominalChargeCapacity"),
                 basis: "日志原生字段"))
         }
+        if let v = record.rawMaxCapacity {
+            out.append(DerivedMetric(
+                title: "实时容量", value: "\(v)", unit: "mAh",
+                icon: "bolt.batteryblock",
+                formula: source("rawMax", in: record, fallback: "AppleRawMaxCapacity"),
+                basis: "日志原生字段"))
+        }
         if let d = record.designCapacity {
             out.append(DerivedMetric(
-                title: "出厂容量", value: "\(d)", unit: "mAh",
+                title: "额定容量（设计）", value: "\(d)", unit: "mAh",
                 icon: "shippingbox",
                 formula: source("design", in: record, fallback: "DesignCapacity"),
                 basis: "日志原生字段"))
