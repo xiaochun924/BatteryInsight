@@ -47,6 +47,7 @@ jobs:
         run: |
           set -o pipefail
           cd "${{ matrix.project }}"
+          # 不截断输出：编译错误详情必须完整留在 Actions 日志里，方便排查
           xcodebuild \
             -project "${{ matrix.project }}.xcodeproj" \
             -scheme "${{ matrix.scheme }}" \
@@ -57,7 +58,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            clean build 2>&1 | tail -40
+            clean build
 
       - name: 打包未签名 IPA
         run: |

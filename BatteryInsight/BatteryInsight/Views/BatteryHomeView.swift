@@ -438,8 +438,10 @@ struct BatteryHomeView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             // 列2：循环次数 + 评级徽章（截图对应「充电 91次 / 一般」）
+            // 注意：analytics?.cycleCount 是 Int??（嵌套可选项），必须加括号
+            // 逐层合并，否则 `??` 左结合类型不匹配会编译失败
             VStack(alignment: .leading, spacing: 6) {
-                Text("循环 \(record.cycleCount ?? analytics?.cycleCount ?? 0) 次")
+                Text("循环 \(record.cycleCount ?? (analytics?.cycleCount ?? 0)) 次")
                     .font(.subheadline.bold())
                     .foregroundStyle(.primary)
                 let grade = rating(record.maximumCapacity)
