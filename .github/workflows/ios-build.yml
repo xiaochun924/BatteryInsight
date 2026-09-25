@@ -85,8 +85,8 @@ jobs:
           # 幂等：重复构建先删掉旧 release（含旧 tag），再建新的覆盖
           gh release delete "$RELEASE_TAG" --yes --cleanup-tag 2>/dev/null || true
           gh release create "$RELEASE_TAG" \
-            --title "未签名 IPA（自动构建）" \
-            --notes "每次 main 分支构建自动更新。下载后可用自有证书重签名安装。" \
+            --title "更新最新版本" \
+            --notes "自签版本" \
             "$IPA"
 
       - name: 上传未签名 IPA（zip 备份）
