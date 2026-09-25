@@ -320,10 +320,12 @@ enum AnalyticsLogParser {
         Array("esigncapacity".utf8), Array("esign_capacity".utf8),
         // 当天未插电总时长段（UnpluggedDurationEnergyViewNew.daily_total_Duration）
         Array("npluggedduration".utf8), Array("ailytotalduration".utf8),
-        // 当天亮屏 / 唤醒时长段（intervalUsageActiveDurationsHistogramViews）
-        Array("irstvaluescreenonduration".utf8), Array("irstvaluewakeduration".utf8),
+        // 当天亮屏 / 唤醒时长段（intervalUsageActiveDurationsHistogramViews）。
+        // 注意：日志键带下划线（first_value_ScreenOnDuration），hint 必须原样保留下划线，
+        // 否则字节滑窗匹配不上、整个段被过滤掉。
+        Array("irst_value_screenonduration".utf8), Array("irst_value_wakeduration".utf8),
         // 当天充电时长 / 次数汇总（sum_of_SystemChargingDuration / Count）
-        Array("umofsystemchargingduration".utf8), Array("umofsystemchargingcount".utf8),
+        Array("um_of_systemchargingduration".utf8), Array("um_of_systemchargingcount".utf8),
     ]
 
     /// 所有 hint 的首字节（小写 ASCII）：y/a/o/e。用于滑窗前的快速排除，
