@@ -20,7 +20,126 @@ struct BatteryTip: Identifiable {
     }
 }
 
+/// 周报 / 月报的聚合摘要。
+/// 数据全部来自本地已采集 / 已导入的记录，不含推测值；
+/// 没有数据的项保持 nil，UI 显示「--」。
+struct BatteryReport: Identifiable {
+    let id = UUID()
+    /// 周期类型
+    let kind: String            // 「周报」/「月报」
+    /// 周期起止日期
+    let startDate: Date
+    let endDate: Date
+
+    // 健康度
+    let healthStart: Double?    // 周期首条健康度
+    let healthEnd: Double?      // 周期末条健康度
+    let healthDelta: Double?    // 周期内变化（+ / -）
+    // 容量
+    let capacityStart: Int?     // 周期首条容量 mAh
+    let capacityEnd: Int?       // 周期末条容量 mAh
+    let capacityDelta: Int?
+    // 循环
+    let cyclesStart: Int?
+    let cyclesEnd: Int?
+    let cyclesDelta: Int?
+    // 充电统计
+    let chargeCount: Int
+    let avgChargeHours: Double?
+    let avgChargeSpeed: Double?
+    let overnightCount: Int
+    // 温度
+    let avgTemp: Double?
+    let maxTemp: Double?
+
+    /// 周期长度文案，如「9月18日 – 9月24日」
+    var rangeText: String {
+        startDate.chineseDateText + " – " + endDate.chineseDateText
+    }
+}
+
 enum BatteryAnalytics {
+
+    // MARK: - 周期报告（周报 / 月报）
+
+    /// 生成最近一个周期的周报 / 月报。
+    ///
+    /// - kind: 传入「周报」/「月报」；「周报」取近 7 天，「月报」取近 30 天。
+    static func makeReport(kind: String,
+                           health: [HealthRecord],
+                           analytics: [AnalyticsRecord],
+                           samples: [BatterySample],
+                           sessions: [ChargingSession]) -> BatteryReport {
+        let calendar = Calendar.current
+        let now = Date()
+        let isWeekly = (kind == "周报")
+        let days = isWeekly ? 7 : 30
+        guard let start = calendar.date(byAdding: .day, value: -days, to: calendar.startOfDay(for: now)) else {
+            return BatteryReport(kind: kind, startDate: now, endDate: now,
+                                 chargeCount: 0)
+        }
+        let end = now
+
+        // 健康度：取周期内的首末条
+        let healthInRange = health
+            .filter { $0.date >= start && $0.date <= end }
+            .sorted { $0.date < $1.date }
+        let healthStart = healthInRange.first?.maximumCapacity
+        let healthEnd = healthInRange.last?.maximumCapacity
+        let healthDelta = (healthStart != nil && healthEnd != nil)
+            ? healthEnd! - healthStart! : nil
+
+        // 容量：来自分析日志 NominalChargeCapacity，按天去重取周期首末
+        let capInRange = analytics
+            .filter { $0.date >= start && $0.date <= end && $0.nominalChargeCapacity != nil }
+            .sorted { $0.date < $1.date }
+        let capStart = capInRange.first?.nominalChargeCapacity
+        let capEnd = capInRange.last?.nominalChargeCapacity
+        let capDelta = (capStart != nil && capEnd != nil)
+            ? capEnd! - capStart! : nil
+
+        // 循环：取周期首末条的循环次数
+        let cyclesInRange = analytics
+            .filter { $0.date >= start && $0.date <= end && $0.cycleCount != nil }
+            .sorted { $0.date < $1.date }
+        let cyclesStart = cyclesInRange.first?.cycleCount
+        let cyclesEnd = cyclesInRange.last?.cycleCount
+        let cyclesDelta = (cyclesStart != nil && cyclesEnd != nil)
+            ? cyclesEnd! - cyclesStart! : nil
+
+        // 充电会话：周期内开启的
+        let chargeSessions = sessions.filter { $0.startDate >= start && $0.startDate <= end }
+        let done = chargeSessions.filter { !$0.isActive }
+        let avgHours = done.isEmpty ? nil : done.map { $0.duration / 3600 }.reduce(0, +) / Double(done.count)
+        let speeds = chargeSessions.compactMap { $0.speedPercentPerHour }
+        let avgSpeed = speeds.isEmpty ? nil : speeds.reduce(0, +) / Double(speeds.count)
+
+        // 温度：周期内分析日志的 maxTemperature（0.1℃ 已换算）均值与峰值
+        let temps = analytics.filter { $0.date >= start && $0.date <= end && $0.maxTemperature != nil }
+            .compactMap { $0.maxTemperature }
+        let avgTemp = temps.isEmpty ? nil : temps.reduce(0, +) / Double(temps.count)
+        let maxTemp = temps.max()
+
+        return BatteryReport(
+            kind: kind,
+            startDate: start,
+            endDate: end,
+            healthStart: healthStart,
+            healthEnd: healthEnd,
+            healthDelta: healthDelta,
+            capacityStart: capStart,
+            capacityEnd: capEnd,
+            capacityDelta: capDelta,
+            cyclesStart: cyclesStart,
+            cyclesEnd: cyclesEnd,
+            cyclesDelta: cyclesDelta,
+            chargeCount: chargeSessions.count,
+            avgChargeHours: avgHours,
+            avgChargeSpeed: avgSpeed,
+            overnightCount: chargeSessions.filter { $0.isOvernight }.count,
+            avgTemp: avgTemp,
+            maxTemp: maxTemp)
+    }
 
     // MARK: - 耗电速率
 
