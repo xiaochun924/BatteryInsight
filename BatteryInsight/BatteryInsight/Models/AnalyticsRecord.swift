@@ -14,10 +14,35 @@ struct AnalyticsRecord: Codable, Identifiable, Equatable, Sendable {
     let systemHealthPercent: Double?
     /// 循环次数 —— CycleCount
     let cycleCount: Int?
-    /// 当前实际容量（mAh）—— NominalChargeCapacity
+    /// 当前实际容量（mAh）—— NominalChargeCapacity（竞品口径的「出厂容量」）
     let nominalChargeCapacity: Int?
-    /// 出厂/设计容量（mAh）—— DesignCapacity
+    /// 出厂/设计容量（mAh）—— DesignCapacity（仅部分旧格式日志才有）
     let designCapacity: Int?
+    /// 实时容量（mAh）—— AppleRawMaxCapacity
+    let rawMaxCapacity: Int?
+    /// 满充容量范围（mAh）—— MinimumFCC / MaximumFCC
+    var minFCC: Int?
+    var maxFCC: Int?
+    /// Qmax（mAh）—— MinimumQmax / MaximumQmax / QmaxCell0
+    var minQmax: Int?
+    var maxQmax: Int?
+    var qmaxCell0: Int?
+    /// 电压范围（V）—— MinimumPackVoltage / MaximumPackVoltage（日志为 mV，已换算）
+    var minPackVoltage: Double?
+    var maxPackVoltage: Double?
+    /// 电流峰值（A）—— MaximumChargeCurrent / MaximumDischargeCurrent（日志为 mA，已换算，放电为正数）
+    var maxChargeCurrent: Double?
+    var maxDischargeCurrent: Double?
+    /// 温度范围（℃）—— MinimumTemperature / MaximumTemperature（日志为 0.1℃，已换算）
+    var minTemperature: Double?
+    var maxTemperature: Double?
+    /// 每日 SOC —— DailyMinSoc / DailyMaxSoc（%）
+    var dailyMinSoc: Int?
+    var dailyMaxSoc: Int?
+    /// 累计运行时间（小时）—— TotalOperatingTime（日志 0.1h，已换算）
+    var totalOperatingHours: Double?
+    /// 记录更新时间 —— UpdateTime（Unix 秒）
+    var lastUpdateTime: Date?
     /// 电池电压（V）
     let voltage: Double?
     /// 电池温度（℃）
@@ -42,6 +67,22 @@ struct AnalyticsRecord: Codable, Identifiable, Equatable, Sendable {
          cycleCount: Int? = nil,
          nominalChargeCapacity: Int? = nil,
          designCapacity: Int? = nil,
+         rawMaxCapacity: Int? = nil,
+         minFCC: Int? = nil,
+         maxFCC: Int? = nil,
+         minQmax: Int? = nil,
+         maxQmax: Int? = nil,
+         qmaxCell0: Int? = nil,
+         minPackVoltage: Double? = nil,
+         maxPackVoltage: Double? = nil,
+         maxChargeCurrent: Double? = nil,
+         maxDischargeCurrent: Double? = nil,
+         minTemperature: Double? = nil,
+         maxTemperature: Double? = nil,
+         dailyMinSoc: Int? = nil,
+         dailyMaxSoc: Int? = nil,
+         totalOperatingHours: Double? = nil,
+         lastUpdateTime: Date? = nil,
          voltage: Double? = nil,
          temperature: Double? = nil,
          rawSnippet: String = "",
@@ -53,6 +94,22 @@ struct AnalyticsRecord: Codable, Identifiable, Equatable, Sendable {
         self.cycleCount = cycleCount
         self.nominalChargeCapacity = nominalChargeCapacity
         self.designCapacity = designCapacity
+        self.rawMaxCapacity = rawMaxCapacity
+        self.minFCC = minFCC
+        self.maxFCC = maxFCC
+        self.minQmax = minQmax
+        self.maxQmax = maxQmax
+        self.qmaxCell0 = qmaxCell0
+        self.minPackVoltage = minPackVoltage
+        self.maxPackVoltage = maxPackVoltage
+        self.maxChargeCurrent = maxChargeCurrent
+        self.maxDischargeCurrent = maxDischargeCurrent
+        self.minTemperature = minTemperature
+        self.maxTemperature = maxTemperature
+        self.dailyMinSoc = dailyMinSoc
+        self.dailyMaxSoc = dailyMaxSoc
+        self.totalOperatingHours = totalOperatingHours
+        self.lastUpdateTime = lastUpdateTime
         self.voltage = voltage
         self.temperature = temperature
         self.rawSnippet = rawSnippet
@@ -65,7 +122,11 @@ struct AnalyticsRecord: Codable, Identifiable, Equatable, Sendable {
     // 自定义解码只为兼容旧版本已落盘的数据（当时还没有 extraFields / fieldSources）
     private enum CodingKeys: String, CodingKey {
         case id, date, systemHealthPercent, cycleCount, nominalChargeCapacity,
-             designCapacity, voltage, temperature, rawSnippet, extraFields, fieldSources
+             designCapacity, rawMaxCapacity, minFCC, maxFCC, minQmax, maxQmax, qmaxCell0,
+             minPackVoltage, maxPackVoltage, maxChargeCurrent, maxDischargeCurrent,
+             minTemperature, maxTemperature, dailyMinSoc, dailyMaxSoc,
+             totalOperatingHours, lastUpdateTime,
+             voltage, temperature, rawSnippet, extraFields, fieldSources
     }
 
     init(from decoder: Decoder) throws {
@@ -76,6 +137,22 @@ struct AnalyticsRecord: Codable, Identifiable, Equatable, Sendable {
         cycleCount = try? c.decode(Int.self, forKey: .cycleCount)
         nominalChargeCapacity = try? c.decode(Int.self, forKey: .nominalChargeCapacity)
         designCapacity = try? c.decode(Int.self, forKey: .designCapacity)
+        rawMaxCapacity = try? c.decode(Int.self, forKey: .rawMaxCapacity)
+        minFCC = try? c.decode(Int.self, forKey: .minFCC)
+        maxFCC = try? c.decode(Int.self, forKey: .maxFCC)
+        minQmax = try? c.decode(Int.self, forKey: .minQmax)
+        maxQmax = try? c.decode(Int.self, forKey: .maxQmax)
+        qmaxCell0 = try? c.decode(Int.self, forKey: .qmaxCell0)
+        minPackVoltage = try? c.decode(Double.self, forKey: .minPackVoltage)
+        maxPackVoltage = try? c.decode(Double.self, forKey: .maxPackVoltage)
+        maxChargeCurrent = try? c.decode(Double.self, forKey: .maxChargeCurrent)
+        maxDischargeCurrent = try? c.decode(Double.self, forKey: .maxDischargeCurrent)
+        minTemperature = try? c.decode(Double.self, forKey: .minTemperature)
+        maxTemperature = try? c.decode(Double.self, forKey: .maxTemperature)
+        dailyMinSoc = try? c.decode(Int.self, forKey: .dailyMinSoc)
+        dailyMaxSoc = try? c.decode(Int.self, forKey: .dailyMaxSoc)
+        totalOperatingHours = try? c.decode(Double.self, forKey: .totalOperatingHours)
+        lastUpdateTime = try? c.decode(Date.self, forKey: .lastUpdateTime)
         voltage = try? c.decode(Double.self, forKey: .voltage)
         temperature = try? c.decode(Double.self, forKey: .temperature)
         rawSnippet = (try? c.decode(String.self, forKey: .rawSnippet)) ?? ""
