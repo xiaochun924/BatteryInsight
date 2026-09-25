@@ -19,6 +19,7 @@ struct RecordDetailView: View {
 
     @State private var tab: Tab = .battery
     @State private var copiedText: String?
+    @State private var showUsageDetail = false
 
     enum Tab: String, CaseIterable, Identifiable {
         case battery = "电池数据"
@@ -69,6 +70,10 @@ struct RecordDetailView: View {
         )
         // 复制成功的反馈用图标变化（✓）表达；部署目标 iOS 26，可用 sensoryFeedback
         .sensoryFeedback(.success, trigger: copiedText)
+        // 「查看详情」：续航详情弹窗
+        .sheet(isPresented: $showUsageDetail) {
+            UsageDetailSheet(analytics: analytics)
+        }
     }
 
     private var displayTab: Tab {
@@ -158,9 +163,6 @@ struct RecordDetailView: View {
         Group {
             Section {
                 headerLabel("电池健康", icon: "heart.fill", tint: .green)
-                if let h = healthPercent {
-                    healthHero(h)
-                }
                 metricGrid()
             } footer: {
                 Text("计算健康度 = 额定容量 ÷ 出厂容量（出厂容量按机型取官方标称），仅供参考。")
@@ -169,14 +171,9 @@ struct RecordDetailView: View {
             if unpluggedText != nil || screenOnText != nil
                 || awakeText != nil || chargingText != nil {
                 Section {
-                    headerLabel("当日续航", icon: "clock.fill", tint: .green)
                     if let t = screenOnText {
                         row("亮屏时长", valueText: t, tint: .green,
                             caption: "当天屏幕点亮累计时长")
-                    }
-                    if let t = awakeText {
-                        row("后台唤醒", valueText: t, tint: .orange,
-                            caption: "当天系统活跃（唤醒）累计时长")
                     }
                     if let t = chargingText {
                         row("充电时长", valueText: t, tint: .blue,
@@ -185,6 +182,20 @@ struct RecordDetailView: View {
                     if let t = unpluggedText {
                         row("未插电时长", valueText: t, tint: .green,
                             caption: "当天拔掉电源的累计时长")
+                    }
+                } header: {
+                    HStack {
+                        headerLabel(record.date.chineseDateText + " 电池续航",
+                                    icon: "clock.fill", tint: .green)
+                        Spacer()
+                        Button {
+                            showUsageDetail = true
+                        } label: {
+                            Label("查看详情", systemImage: "chevron.right")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
                     }
                 } footer: {
                     Text("时长均取自分析日志：亮屏/唤醒为 intervalUsage 段 15 分钟区间求和，充电为 SystemChargingDuration 汇总，未插电为 UnpluggedDurationEnergyViewNew。")
@@ -208,71 +219,57 @@ struct RecordDetailView: View {
         }
     }
 
-    /// 健康度大字（对齐截图：绿色大数字 + 单位 + 口径小字）
-    private func healthHero(_ h: Double) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text(String(format: "%.1f", h))
-                .font(.system(size: 34, weight: .bold, design: .rounded))
-                .foregroundStyle(.green)
-                .monospacedDigit()
-            Text("%")
-                .font(.headline.bold())
-                .foregroundStyle(.green)
-            Spacer()
-            Text("额定容量 ÷ 出厂容量")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
-        .padding(.vertical, 6)
-    }
-
-    /// 2×2 指标格（对齐截图：衰减稳定性 / 电芯一致性 / 充电次数 / 电池状态）
+    /// 3 行 × 2 列指标格（对齐截图：计算健康度 / 电池状态 / 衰减稳定性 / 电芯一致性 / 充电次数）
     private func metricGrid() -> some View {
         LazyVGrid(columns: [
             GridItem(.flexible(), spacing: 12),
             GridItem(.flexible(), spacing: 12),
         ], spacing: 12) {
-            if let d = degradedCapacity {
-                metricCell("衰减稳定性", "\(d)", "mAh", icon: "arrow.down.heart.fill", tint: .orange)
-            }
-            if let c = cellConsistency {
-                metricCell("电芯一致性", "\(c)", "mAh", icon: "equal.circle.fill", tint: .blue)
-            }
-            if let cyc = cycleCount {
-                metricCell("充电次数", "\(cyc)", "次", icon: "arrow.2.circlepath", tint: .blue)
+            if let h = healthPercent {
+                metricCell("计算健康度", String(format: "%.1f", h), "%",
+                           tint: .green, large: true)
             }
             if let st = batteryState {
-                metricCell("电池状态", st.text, "", icon: "checkmark.seal.fill", tint: st.color)
+                metricCell("电池状态", st.text, "", tint: st.color)
+            }
+            if let d = degradedCapacity {
+                metricCell("衰减稳定性", "\(d)", "mAh", tint: .orange)
+            }
+            if let c = cellConsistency {
+                metricCell("电芯一致性", "\(c)", "mAh", tint: .blue)
+            }
+            if let cyc = cycleCount {
+                metricCell("充电次数", "\(cyc)", "次", tint: .blue)
             }
         }
         .padding(.vertical, 4)
     }
 
+    /// 指标格（对齐截图：大数值靠左 + 标题靠右）
     private func metricCell(_ title: String, _ value: String, _ unit: String,
-                            icon: String, tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 5) {
-                Image(systemName: icon)
-                    .font(.caption)
-                    .foregroundStyle(tint)
-                Text(title)
+                            tint: Color, large: Bool = false) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(value)
+                .font(large ? .title.bold() : .title3.bold())
+                .foregroundStyle(tint)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+            if !unit.isEmpty {
+                Text(unit)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            HStack(alignment: .firstTextBaseline, spacing: 3) {
-                Text(value)
-                    .font(.title3.bold())
-                    .monospacedDigit()
-                if !unit.isEmpty {
-                    Text(unit)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            }
+            Spacer(minLength: 4)
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 12))
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .padding(.horizontal, 14)
+        .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
     }
 
     // MARK: - 其他数据（全部来自分析日志真实键）
@@ -488,5 +485,98 @@ struct RecordDetailView: View {
         }
         lines.append("—— 来自 BatteryInsight")
         return lines.joined(separator: "\n")
+    }
+}
+
+/// 当日续航详情弹窗（点续航板块「查看详情」弹出）。
+/// 展示当天所有可用的续航时段数据，全部来自分析日志真实字段。
+private struct UsageDetailSheet: View {
+    let analytics: AnalyticsRecord?
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    detailRow("亮屏时长", secondsText(analytics?.screenOnSeconds), "sun.max.fill", .green)
+                    detailRow("后台唤醒", secondsText(analytics?.awakeSeconds), "moon.stars.fill", .orange)
+                    detailRow("充电时长", minutesText(analytics?.chargingMinutes), "bolt.fill", .blue)
+                    detailRow("未插电时长", secondsText(analytics?.unpluggedDurationSeconds), "poweroutlet.type.fill", .green)
+                } header: {
+                    Text("时段明细")
+                } footer: {
+                    Text("亮屏/唤醒为 intervalUsage 段 15 分钟区间求和；充电为 SystemChargingDuration 汇总（分钟）；未插电为 UnpluggedDurationEnergyViewNew。")
+                }
+
+                if analytics?.maxTemperature != nil || analytics?.totalOperatingHours != nil {
+                    Section {
+                        if let r = analytics, let hi = r.maxTemperature {
+                            detailRow("温度区间",
+                                      temperatureText(hi, avg: r.temperature, lo: r.minTemperature),
+                                      "thermometer.medium", .orange)
+                        }
+                        if let h = analytics?.totalOperatingHours {
+                            let hours = Int(h.rounded())
+                            let grouped = NumberFormatter.localizedString(from: NSNumber(value: hours), number: .decimal)
+                            detailRow("运行时长", "\(grouped) 小时（\(String(format: "%.1f", h / 24)) 天）",
+                                      "clock.fill", .gray)
+                        }
+                    } header: {
+                        Text("电池状态")
+                    }
+                }
+            }
+            .navigationTitle("续航详情")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func secondsText(_ s: Double?) -> String {
+        guard let s, s > 0 else { return "--" }
+        let total = Int(s.rounded())
+        let hours = total / 3600
+        let minutes = total % 3600 / 60
+        if hours == 0 { return "\(minutes)分钟" }
+        return "\(hours)小时\(minutes)分钟"
+    }
+
+    private func minutesText(_ m: Int?) -> String {
+        guard let m, m > 0 else { return "--" }
+        let hours = m / 60
+        let minutes = m % 60
+        if hours == 0 { return "\(minutes)分钟" }
+        return "\(hours)小时\(minutes)分钟"
+    }
+
+    private func temperatureText(_ hi: Double, avg: Double?, lo: Double?) -> String {
+        var text = "最高 \(String(format: "%.1f", hi))°"
+        if let avg { text += "，平均 \(String(format: "%.1f", avg))°" }
+        if let lo { text = "最低 \(String(format: "%.1f", lo))°，" + text }
+        return text
+    }
+
+    private func detailRow(_ title: String, _ value: String,
+                           _ icon: String, _ tint: Color) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.subheadline)
+                .foregroundStyle(tint)
+                .frame(width: 26, height: 26)
+                .background(tint.opacity(0.15), in: RoundedRectangle(cornerRadius: 7))
+            Text(title)
+                .font(.subheadline)
+            Spacer()
+            Text(value)
+                .font(.subheadline.bold())
+                .monospacedDigit()
+                .multilineTextAlignment(.trailing)
+        }
     }
 }
