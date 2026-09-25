@@ -175,7 +175,8 @@ struct BatteryHomeView: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
                         .background(.quaternary, in: Capsule())
-                }())
+                }()
+            )
 
             if let record = latest {
                 infoRow(
@@ -418,6 +419,17 @@ struct BatteryHomeView: View {
     private func recordCard(_ record: HealthRecord) -> some View {
         // 同一天的分析日志（温度 / 循环 / 累计运行时长的数据源）
         let analytics = analyticsFor(record)
+        // 循环次数：手动记录优先，同天分析日志兜底。
+        // 注意 analytics?.cycleCount 是 Int??（嵌套可选项），逐层 if-let 解包最稳；
+        // 且赋值语句必须放在 ViewBuilder 闭包之外（闭包内 if 分支只能是 View）
+        let cycles: Int
+        if let c = record.cycleCount {
+            cycles = c
+        } else if let c = analytics?.cycleCount {
+            cycles = c
+        } else {
+            cycles = 0
+        }
         return HStack(alignment: .center, spacing: 8) {
             // 列1：健康度 + 估算温度（截图对应「健康 101.60% / 15个应用卡顿」；
             // 卡顿无数据源，用估算温度占位）
@@ -438,28 +450,16 @@ struct BatteryHomeView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             // 列2：循环次数 + 评级徽章（截图对应「充电 91次 / 一般」）
-            // 注意：analytics?.cycleCount 是 Int??（嵌套可选项），
-            // 直接 `a ?? b ?? c` 或 `a ?? (b ?? 0)` 都会因 ?? 泛型推断
-            // 类型不匹配编译失败；这里逐层 if-let 解包最稳
             VStack(alignment: .leading, spacing: 6) {
-                let cycles: Int
-                if let c = record.cycleCount {
-                    cycles = c
-                } else if let c = analytics?.cycleCount {
-                    cycles = c
-                } else {
-                    cycles = 0
-                }
                 Text("循环 \(cycles) 次")
                     .font(.subheadline.bold())
                     .foregroundStyle(.primary)
-                let grade = rating(record.maximumCapacity)
-                Text(grade.text)
+                Text(rating(record.maximumCapacity).text)
                     .font(.caption2.bold())
                     .padding(.horizontal, 7)
                     .padding(.vertical, 2)
-                    .background(grade.color.opacity(0.15), in: Capsule())
-                    .foregroundStyle(grade.color)
+                    .background(rating(record.maximumCapacity).color.opacity(0.15), in: Capsule())
+                    .foregroundStyle(rating(record.maximumCapacity).color)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
