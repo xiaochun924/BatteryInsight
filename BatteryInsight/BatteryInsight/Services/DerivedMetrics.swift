@@ -190,53 +190,63 @@ enum DerivedMetrics {
 
     // MARK: - 原生字段展示
 
-    /// 直接从日志读取、未经推算的原生字段（含单位换算说明）
+    /// 直接从日志读取、未经推算的原生字段。
+    ///
+    /// 每项都标出**实际取自哪个键**——键名前缀因机型 / 系统版本而异
+    /// （`last_value_CycleCount`、`cycle_count`、`CycleCount`…），
+    /// 写死一个推测值会让人无法核对数字来源。
     static func nativeMetrics(from record: AnalyticsRecord) -> [DerivedMetric] {
         var out: [DerivedMetric] = []
         if let h = record.systemHealthPercent {
             out.append(DerivedMetric(
-                title: "系统健康度", value: String(format: "%.2f", h), unit: "%",
+                title: "系统健康度", value: format(h), unit: "%",
                 icon: "checkmark.seal",
-                formula: "iOS 直接写入（MaximumCapacityPercent）",
+                formula: source("health", in: record, fallback: "MaximumCapacityPercent"),
                 basis: "日志原生字段"))
         }
         if let c = record.cycleCount {
             out.append(DerivedMetric(
                 title: "循环次数", value: "\(c)", unit: "次",
                 icon: "arrow.2.circlepath",
-                formula: "iOS 直接写入（CycleCount）",
+                formula: source("cycle", in: record, fallback: "CycleCount"),
                 basis: "日志原生字段"))
         }
         if let n = record.nominalChargeCapacity {
             out.append(DerivedMetric(
                 title: "当前实际容量", value: "\(n)", unit: "mAh",
                 icon: "battery.100",
-                formula: "iOS 直接写入（NominalChargeCapacity）",
+                formula: source("nominal", in: record, fallback: "NominalChargeCapacity"),
                 basis: "日志原生字段"))
         }
         if let d = record.designCapacity {
             out.append(DerivedMetric(
                 title: "出厂容量", value: "\(d)", unit: "mAh",
                 icon: "shippingbox",
-                formula: "iOS 直接写入（DesignCapacity）",
+                formula: source("design", in: record, fallback: "DesignCapacity"),
                 basis: "日志原生字段"))
         }
         if let v = record.voltage {
             out.append(DerivedMetric(
                 title: "电池电压", value: String(format: "%.3f", v), unit: "V",
                 icon: "bolt",
-                formula: "iOS 直接写入（Voltage）",
+                formula: source("voltage", in: record, fallback: "Voltage"),
                 basis: "日志原生字段"))
         }
         if let t = record.temperature {
             out.append(DerivedMetric(
                 title: "电池温度", value: String(format: "%.1f", t), unit: "℃",
                 icon: "thermometer",
-                formula: "iOS 直接写入（Temperature）",
+                formula: source("temperature", in: record, fallback: "Temperature"),
                 basis: "日志原生字段"))
         }
         out.append(contentsOf: extraFieldMetrics(from: record))
         return out
+    }
+
+    private static func source(_ field: String,
+                               in record: AnalyticsRecord,
+                               fallback: String) -> String {
+        "iOS 直接写入（\(record.fieldSources[field] ?? fallback)）"
     }
 
     /// `batteryhealth` 里其余未单独建模的数值字段。
@@ -245,13 +255,23 @@ enum DerivedMetrics {
     static func extraFieldMetrics(from record: AnalyticsRecord) -> [DerivedMetric] {
         record.sortedExtraFields.map { field in
             DerivedMetric(
-                title: field.key,
+                title: shortKey(field.key),
                 value: format(field.value),
                 unit: "",
                 icon: "number",
-                formula: "iOS 直接写入（batteryhealth.\(field.key)）",
+                formula: "iOS 直接写入（\(field.key)）",
                 basis: "原生字段，含义未公开")
         }
+    }
+
+    /// 展示时去掉 `last_value_` / `com.apple.power.battery.` 这类前缀，
+    /// 完整键名仍保留在「口径」行里，便于核对。
+    private static func shortKey(_ key: String) -> String {
+        var s = key
+        for prefix in ["last_value_", "com.apple.power.battery.", "com_apple_power_battery_"] {
+            if s.hasPrefix(prefix) { s = String(s.dropFirst(prefix.count)); break }
+        }
+        return s
     }
 
     private static func format(_ v: Double) -> String {
