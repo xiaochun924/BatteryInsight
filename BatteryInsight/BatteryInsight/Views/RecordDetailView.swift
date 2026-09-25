@@ -61,6 +61,7 @@ struct RecordDetailView: View {
                 }
             }
         }
+        // 复制成功的反馈用图标变化（✓）表达；sensoryFeedback 需要 iOS 17，部署目标是 16
     }
 
     private var displayTab: Tab {
@@ -83,6 +84,7 @@ struct RecordDetailView: View {
         Group {
             Section {
                 headerLabel("电池健康", icon: "heart.fill", tint: .green)
+                // 手动记录优先；没有手动值时退回日志里的系统健康度
                 let h = record.maximumCapacity > 0
                     ? Optional(record.maximumCapacity)
                     : analytics?.systemHealthPercent
@@ -141,7 +143,7 @@ struct RecordDetailView: View {
                     row("出厂容量", valueText: "\(v) mAh", tint: .green)
                 }
                 if let v = analytics?.nominalChargeCapacity {
-                    row("额定容量", valueText: "\(nominal) mAh", tint: .green)
+                    row("额定容量", valueText: "\(v) mAh", tint: .green)
                 }
                 if let text = temperatureRangeText {
                     row("温度区间", valueText: text, tint: .orange)
