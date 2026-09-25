@@ -16,11 +16,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          #- project: HA-iOS
-            #scheme: HA_iOS
-          - project: BatteryInsight
-            scheme: BatteryInsight
+        project: [BatteryInsight]
+        scheme: [BatteryInsight]
 
     steps:
       - name: 检出代码
