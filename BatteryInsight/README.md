@@ -27,13 +27,13 @@
 
 1. 设置 → 隐私与安全性 → 分析与改进 → 分析数据 → 找到 `Analytics-*.ips`（按日期排序选最新）
 2. 点开文件 → 右上角**分享** → **存储到「文件」**（选个位置存下；多存几个不同日期的，趋势图才有意义）
-3. 回到 App「日志分析」页 → 右上角导入 → **选择日志文件** → 选中刚存的文件
+3. 回到 App → 点右上角「**导入**」→ 直接拉起文件管理器 → 选中刚存的文件即自动解析
 
 支持**一次选多个**批量导入，也可以从隔空投送、iCloud 云盘里选。
 
-### 方式二：粘贴文本
+### 方式二：粘贴文本（次要入口）
 
-不方便存文件时用：在「分析数据」里打开 `Analytics-*.ips` → 全选 → 拷贝 → 回到 App → 导入 → **粘贴文本**（App 内还有「从剪贴板填入」按钮）。只需含 `batteryhealth` 字段的片段即可。
+不方便存文件时用：在「分析数据」里打开 `Analytics-*.ips` → 全选 → 拷贝 → 回到 App → 左上角 ⋯ 菜单 → **粘贴日志文本**（App 内还有「从剪贴板填入」按钮）。
 
 > ⚠️ **为什么不能自动读取**：该目录在系统进程命名空间下，第三方 App 无权限访问，这也是合规 App 的普遍做法（手动导入）。文件导入走的是系统文档选择器，由你显式授权后读取，本质仍是「你给 App 什么，它读什么」。
 
@@ -45,34 +45,50 @@
 
 ## 🔍 解析方式：结构优先，正则兜底
 
-`.ips` 的真实结构是「一行元数据头 + 一行 JSON 正文」，电池快照在正文的 `batteryhealth` 对象里：
+`.ips` 的真实结构是「**一行一个 JSON 对象**」：第一行是表头（含 `timestamp`、
+`os_version`），其余行的 `message` 对象里带当天聚合的电池统计，键名统一带
+`last_value_` 前缀：
 
 ```
-{"timestamp":"2026-09-19 10:23:45.6780 +0800","bug_type":"115",...}
-{"batteryhealth":{"CycleCount":123,"DesignCapacity":4823,
-  "MaximumCapacityPercent":100,"NominalChargeCapacity":4906,...},"osVersion":...}
+{"timestamp":"2026-09-24 08:00:08.00 +0800","os_version":"iPhone OS 26.0 (23A340)",…}
+{"message":{"last_value_CycleCount":755,"last_value_MaximumCapacityPercent":88,
+            "last_value_NominalChargeCapacity":4321,
+            "last_value_AppleRawMaxCapacity":4400,…}}
 ```
 
-所以解析**按结构走**，而不是靠正则在全文里扫数字：
+> ⚠️ **踩过的坑**：早期版本假设电池数据装在 `batteryhealth` 对象里、键名是
+> `CycleCount` / `MaximumCapacityPercent`。实际日志两者都不符，于是结构化解析
+> 全部落空、退回正则扫描，抓到的是**无关数字**——表现就是"循环次数、健康度都不对"。
+> 现在以真实结构为准。
 
-1. 按花括号配平切出顶层 JSON 对象（正确处理字符串内的 `{}` 与转义）
-2. `JSONSerialization` 解析 → 递归定位 `batteryhealth`（兼容大小写与命名差异）
-3. 按类型取值；正文没有时间戳时，取它之前最近一个带 `timestamp` 的对象
-4. 只有在 JSON 解析失败（日志被截断、只复制了片段）时才退回字段扫描
+因此解析**不穷举键名**：把键名规整成「只留字母数字的小写串」后按后缀匹配语义，
+`last_value_CycleCount`、`cycle_count`、`CycleCount`、`BatteryCycleCount`
+都能落到同一条规则上：
 
-这样字段归属明确，不会串值，也不用猜哪个数字属于哪个键。
+1. 按花括号配平切出顶层 JSON 对象（正确处理字符串内的 `{}` 与转义；走 UTF-8
+   字节扫描——几十 MB 的日志按 Character 遍历会慢到十几秒，界面就是这么"黑屏"的）
+2. 廉价预筛：只含电池关键词的对象才跑 `JSONSerialization`，几万行里通常只有几行命中
+3. 定位承载电池字段的字典：优先 `message`，其次 `batteryhealth`，再考虑对象本身
+4. 按类型取值 + **量级校验**（健康度 1~150、循环 0~10000、容量 100~20000…），
+   抓错键时不会给出一个看起来合理的错数字
+5. 电池行通常不带时间戳，取它之前最近的一个——也就是本文件表头那个
+6. 同一天只保留字段最完整的一条（一天日志里电池统计可能写入多次）
+7. JSON 结构对不上（截断 / 片段 / plist 格式的 `log-aggregated-*.ips`）才退回通用键值扫描
 
-App 从 `batteryhealth` 解析这些**原生字段**：
+App 解析这些**原生字段**（键名按后缀匹配，前缀随版本而异）：
 
-| 日志字段 | 含义 |
-|---------|------|
-| `MaximumCapacityPercent` | 系统健康度 % |
-| `CycleCount` | 循环次数 |
-| `NominalChargeCapacity` | 当前实际容量 mAh |
-| `DesignCapacity` | 出厂（设计）容量 mAh |
-| `Voltage` / `Temperature` | 电压 V / 温度 ℃ |
+| 字段 | 键名后缀 | 含义 |
+|------|---------|------|
+| 系统健康度 | `MaximumCapacityPercent` | 健康度 % |
+| 循环次数 | `CycleCount` | 完整充电循环数 |
+| 当前实际容量 | `NominalChargeCapacity` | mAh |
+| 出厂容量 | `DesignCapacity` | mAh |
+| 电池电压 / 温度 | `Voltage` / `Temperature` | V / ℃ |
 
-除此之外，`batteryhealth` 里**其余数值字段**（如 `AppleRawMaxCapacity`、`AppleRawNominalCapacity`、`Qmax`、`WeightedRa`、`PresentDOD` 等）也会照原样收录并展示——不同机型写入的字段集合本就不同，系统写什么就存什么。但这些字段苹果未公开含义，因此只呈现键名与数值，**不做任何解读**。
+界面上每项都会标出它在日志里的**真实键名**（如 `last_value_CycleCount`），
+便于核对数字是从哪来的。除此之外其余数值字段（`AppleRawMaxCapacity`、
+`DailyMaxSoc` 等）也照原样收录展示——不同机型写入的字段集合本就不同，
+系统写什么就存什么。但这些字段苹果未公开含义，因此只呈现键名与数值，**不做任何解读**。
 
 界面刻意分成两个区块：
 
@@ -93,7 +109,7 @@ App 从 `batteryhealth` 解析这些**原生字段**：
 - **电量趋势**：Swift Charts 折线图，24 小时 / 7 天 / 全部切换，充电段与放电段分色
 - **健康度追踪**：手动录入或从系统日志导入最大容量，画衰减曲线（含 80% 更换阈值参考线），算 %/月 衰减速率，预估降到 80% 还需几个月
 - **优化建议**：基于真实数据生成（整夜充电、满电久插、深度放电、健康度阈值、耗电过快等）
-- **分析日志导入**：支持**从「文件」选 .ips 批量导入**或粘贴文本；按 `batteryhealth` 结构解析（JSON 优先、正则兜底），原生数据与衍生指标分块展示
+- **分析日志导入**：点「导入」直接拉起系统文件管理器，选中 `.ips` 即自动解析（也保留粘贴文本入口）；按日志真实 `message` 结构解析，原生数据与衍生指标分块展示，并同步生成主页的健康记录
 
 ## 运行方式
 
@@ -136,7 +152,7 @@ BatteryInsight/
     │   ├── BatteryMonitor.swift    # UIDevice 封装：定时采样 + 状态变化通知
     │   ├── DataStore.swift         # 本地持久化 + 演示数据生成
     │   ├── BatteryAnalytics.swift  # 分析引擎 + 建议规则
-    │   ├── AnalyticsLogParser.swift# 分析日志解析（按 batteryhealth 结构，正则兜底）
+    │   ├── AnalyticsLogParser.swift# 分析日志解析（message / batteryhealth 结构 + 键值兜底）
     │   ├── AnalyticsFileImporter.swift # 文件读取：安全作用域 + 编码兜底 + 体积上限
     │   └── DerivedMetrics.swift    # 衍生指标计算（含公式与依据）
     ├── ViewModels/
