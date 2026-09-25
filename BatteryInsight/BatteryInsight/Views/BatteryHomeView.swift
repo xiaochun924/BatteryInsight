@@ -261,7 +261,14 @@ struct BatteryHomeView: View {
                     Spacer()
                 }
 
-                trendChart
+                // 点击趋势图 → 进入独立「趋势分析」页（参考竞品截图布局）
+                NavigationLink {
+                    TrendDetailView()
+                } label: {
+                    trendChart
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
 
                 // 底部摘要行（对应截图：「⚖️ 正常老化 · 约 2 年 9 个月到 80%」+ 右侧「详情」入口）
                 HStack(spacing: 6) {
