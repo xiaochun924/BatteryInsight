@@ -42,15 +42,14 @@ struct LiquidGlassTopBar: ViewModifier {
         ZStack {
             // 中间悬浮玻璃胶囊标题：ZStack 默认居中，标题始终在整行正中，
             // 不参与左右 HStack 的宽度分配，左右按钮再宽也不会把它挤偏。
+            // 液态玻璃质感：超薄材质打底 + 顶部高光渐变（模拟玻璃折射）+ 上亮下暗描边 + 柔和投影
             Text(title)
                 .font(.headline)
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(.ultraThinMaterial, in: Capsule())
-                .overlay(Capsule().strokeBorder(.white.opacity(0.25), lineWidth: 0.5))
-                .shadow(color: .black.opacity(0.08), radius: 10, y: 4)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 9)
+                .background { glassCapsuleBackground }
                 .allowsHitTesting(false)
 
             // 左侧组合：返回按钮 + 自定义槽位（如主页面左上角菜单），靠左对齐
@@ -79,7 +78,7 @@ struct LiquidGlassTopBar: ViewModifier {
         .padding(.top, 4)
     }
 
-    /// 圆形玻璃按钮（返回按钮统一走这里）
+    /// 圆形玻璃按钮（返回按钮统一走这里；液态玻璃圆底见 `glassCircleBackground`）
     private func glassButton(systemName: String,
                              action: @escaping @MainActor () -> Void) -> some View {
         Button(action: action) {
@@ -87,11 +86,75 @@ struct LiquidGlassTopBar: ViewModifier {
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(.primary)
                 .frame(width: 40, height: 40)
-                .background(.ultraThinMaterial, in: Circle())
-                .overlay(Circle().strokeBorder(.white.opacity(0.25), lineWidth: 0.5))
-                .shadow(color: .black.opacity(0.08), radius: 8, y: 3)
+                .background { glassCircleBackground }
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: - 液态玻璃底（组件内部复用）
+
+    /// 液态玻璃胶囊底：超薄材质 + 顶部高光渐变 + 上亮下暗描边 + 双层柔和投影
+    private var glassCapsuleBackground: some View {
+        Capsule()
+            .fill(.ultraThinMaterial)
+            .overlay {
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                .white.opacity(0.38),
+                                .white.opacity(0.10),
+                                .clear,
+                                .black.opacity(0.05)
+                            ],
+                            startPoint: .top, endPoint: .bottom
+                        )
+                    )
+            }
+            .overlay {
+                Capsule()
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [.white.opacity(0.65), .white.opacity(0.12)],
+                            startPoint: .top, endPoint: .bottom
+                        ),
+                        lineWidth: 0.8
+                    )
+            }
+            .shadow(color: .black.opacity(0.12), radius: 14, y: 6)
+            .shadow(color: .white.opacity(0.18), radius: 4, y: -1)
+    }
+
+    /// 液态玻璃圆底：超薄材质 + 顶部高光渐变 + 上亮下暗描边 + 双层柔和投影
+    private var glassCircleBackground: some View {
+        Circle()
+            .fill(.ultraThinMaterial)
+            .overlay {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                .white.opacity(0.38),
+                                .white.opacity(0.10),
+                                .clear,
+                                .black.opacity(0.05)
+                            ],
+                            startPoint: .top, endPoint: .bottom
+                        )
+                    )
+            }
+            .overlay {
+                Circle()
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [.white.opacity(0.65), .white.opacity(0.12)],
+                            startPoint: .top, endPoint: .bottom
+                        ),
+                        lineWidth: 0.8
+                    )
+            }
+            .shadow(color: .black.opacity(0.10), radius: 8, y: 4)
+            .shadow(color: .white.opacity(0.15), radius: 3, y: -1)
     }
 }
 
@@ -117,5 +180,74 @@ extension View {
                 trailing: { AnyView(trailing()) }
             )
         )
+    }
+
+    /// 液态玻璃胶囊底（顶栏动作按钮通用）：超薄材质 + 顶部高光 + 上亮下暗描边 + 柔和投影。
+    /// 用法：`Text("分析").padding(...).background { glassCapsule() }` 或 `.glassCapsuleBackground()`
+    func glassCapsuleBackground() -> some View {
+        self.background {
+            Capsule()
+                .fill(.ultraThinMaterial)
+                .overlay {
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    .white.opacity(0.38),
+                                    .white.opacity(0.10),
+                                    .clear,
+                                    .black.opacity(0.05)
+                                ],
+                                startPoint: .top, endPoint: .bottom
+                            )
+                        )
+                }
+                .overlay {
+                    Capsule()
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [.white.opacity(0.65), .white.opacity(0.12)],
+                                startPoint: .top, endPoint: .bottom
+                            ),
+                            lineWidth: 0.8
+                        )
+                }
+                .shadow(color: .black.opacity(0.12), radius: 14, y: 6)
+                .shadow(color: .white.opacity(0.18), radius: 4, y: -1)
+        }
+    }
+
+    /// 液态玻璃圆形底（顶栏圆形按钮通用）：超薄材质 + 顶部高光 + 上亮下暗描边 + 柔和投影。
+    func glassCircleBackground() -> some View {
+        self.background {
+            Circle()
+                .fill(.ultraThinMaterial)
+                .overlay {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    .white.opacity(0.38),
+                                    .white.opacity(0.10),
+                                    .clear,
+                                    .black.opacity(0.05)
+                                ],
+                                startPoint: .top, endPoint: .bottom
+                            )
+                        )
+                }
+                .overlay {
+                    Circle()
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [.white.opacity(0.65), .white.opacity(0.12)],
+                                startPoint: .top, endPoint: .bottom
+                            ),
+                            lineWidth: 0.8
+                        )
+                }
+                .shadow(color: .black.opacity(0.10), radius: 8, y: 4)
+                .shadow(color: .white.opacity(0.15), radius: 3, y: -1)
+        }
     }
 }

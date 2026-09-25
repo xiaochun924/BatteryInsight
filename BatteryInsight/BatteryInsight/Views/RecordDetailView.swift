@@ -63,8 +63,7 @@ struct RecordDetailView: View {
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(.primary)
                         .frame(width: 40, height: 40)
-                        .background(.ultraThinMaterial, in: Circle())
-                        .overlay(Circle().strokeBorder(.white.opacity(0.25), lineWidth: 0.5))
+                        .glassCircleBackground()
                 }
             }
         )

@@ -105,8 +105,7 @@ struct BatteryHomeView: View {
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(.primary)
                         .frame(width: 40, height: 40)
-                        .background(.ultraThinMaterial, in: Circle())
-                        .overlay(Circle().strokeBorder(.white.opacity(0.25), lineWidth: 0.5))
+                        .glassCircleBackground()
                 }
                 .buttonStyle(.plain)
             },
@@ -117,8 +116,7 @@ struct BatteryHomeView: View {
                         .font(.subheadline.bold())
                         .padding(.horizontal, 14)
                         .padding(.vertical, 9)
-                        .background(.ultraThinMaterial, in: Capsule())
-                        .overlay(Capsule().strokeBorder(.white.opacity(0.25), lineWidth: 0.5))
+                        .glassCapsuleBackground()
                 }
                 .buttonStyle(.plain)
                 .disabled(vm.isImporting)
