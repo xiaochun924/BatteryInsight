@@ -176,6 +176,7 @@ final class BatteryViewModel: ObservableObject {
             return false
         }
         let added = store.mergeAnalytics(result.records)
+        syncHealthFromAnalytics(result.records)
         refresh()
         importSucceeded = true
         var msg = "解析出 \(result.records.count) 条记录"
@@ -227,11 +228,41 @@ final class BatteryViewModel: ObservableObject {
 
         var report = scanned
         report.addedCount = records.isEmpty ? 0 : store.mergeAnalytics(records)
+        syncHealthFromAnalytics(records)
         refresh()
 
         importSucceeded = report.succeeded
         importMessage = report.message
         return report
+    }
+
+    // MARK: - 同步到主页
+
+    /// 把日志里读到的健康度也写成一条「健康记录」，让主页面直接看到。
+    ///
+    /// 之前导入完只写进 `analyticsRecords`，主页依旧是空的，
+    /// 从用户角度看跟"导入失败"没区别。同一天只写一条，重复导入不会刷出一堆点。
+    private func syncHealthFromAnalytics(_ records: [AnalyticsRecord]) {
+        let calendar = Calendar.current
+        for r in records {
+            guard let capacity = healthPercent(of: r) else { continue }
+            let duplicated = store.healthRecords.contains {
+                calendar.isDate($0.date, inSameDayAs: r.date)
+            }
+            guard !duplicated else { continue }
+            store.addHealthRecord(HealthRecord(date: r.date,
+                                               maximumCapacity: capacity,
+                                               cycleCount: r.cycleCount,
+                                               note: "来自分析日志"))
+        }
+    }
+
+    /// 优先用系统写入的健康度；日志没写就用「实际容量 ÷ 出厂容量」算一个
+    private func healthPercent(of r: AnalyticsRecord) -> Double? {
+        if let h = r.systemHealthPercent { return h }
+        guard let nominal = r.nominalChargeCapacity,
+              let design = r.designCapacity, design > 0 else { return nil }
+        return Double(nominal) / Double(design) * 100
     }
 
     /// 进度文案带上体积，让用户知道大文件需要等一会儿
