@@ -145,26 +145,13 @@ struct RecordDetailView: View {
                 if let v = analytics?.nominalChargeCapacity {
                     row("额定容量", valueText: "\(v) mAh", tint: .green)
                 }
-                if let hi = analytics?.maxTemperature {
-                    let lo = analytics?.minTemperature
-                    var text = "历史最高 \(String(format: "%.1f", hi))°"
-                    if let avg = analytics?.temperature {
-                        text += "，平均 \(String(format: "%.1f", avg))°"
-                    }
-                    if let lo { text = "历史最低 \(String(format: "%.1f", lo))°，" + text }
+                if let text = temperatureRangeText {
                     row("温度区间", valueText: text, tint: .orange)
                 }
                 if let lo = analytics?.minFCC, let hi = analytics?.maxFCC {
                     row("满充容量（范围）", valueText: "\(lo)–\(hi) mAh", tint: .green)
                 }
-                if analytics?.minQmax != nil || analytics?.qmaxCell0 != nil {
-                    var text = ""
-                    if let lo = analytics?.minQmax, let hi = analytics?.maxQmax {
-                        text = "\(lo)–\(hi) mAh"
-                    }
-                    if let c = analytics?.qmaxCell0 {
-                        text = text.isEmpty ? "Cell0：\(c) mAh" : text + "\nCell0：\(c) mAh"
-                    }
+                if let text = qmaxRangeText {
                     row("Qmax 范围", valueText: text, tint: .green)
                 }
                 if let lo = analytics?.minPackVoltage, let hi = analytics?.maxPackVoltage {
@@ -172,15 +159,7 @@ struct RecordDetailView: View {
                         valueText: "最小 \(String(format: "%.3f", lo)) V\n最大 \(String(format: "%.3f", hi)) V",
                         tint: .yellow)
                 }
-                if analytics?.maxChargeCurrent != nil || analytics?.maxDischargeCurrent != nil {
-                    var text = ""
-                    if let c = analytics?.maxChargeCurrent {
-                        text = "充电峰值 ≈ \(String(format: "%.2f", c)) A"
-                    }
-                    if let d = analytics?.maxDischargeCurrent {
-                        let line = "放电峰值 ≈ \(String(format: "%.2f", d)) A"
-                        text = text.isEmpty ? line : text + "\n" + line
-                    }
+                if let text = currentDataText {
                     row("电流数据", valueText: text, tint: .blue)
                 }
                 if let v = analytics?.dailyMinSoc {
@@ -214,6 +193,46 @@ struct RecordDetailView: View {
                 }
             }
         }
+    }
+
+    /// 温度区间文案：历史最高/最低/平均拼接（移出 ViewBuilder，避免 Void 表达式无法转成 View）
+    private var temperatureRangeText: String? {
+        guard let hi = analytics?.maxTemperature else { return nil }
+        var text = "历史最高 \(String(format: "%.1f", hi))°"
+        if let avg = analytics?.temperature {
+            text += "，平均 \(String(format: "%.1f", avg))°"
+        }
+        if let lo = analytics?.minTemperature {
+            text = "历史最低 \(String(format: "%.1f", lo))°，" + text
+        }
+        return text
+    }
+
+    /// Qmax 范围文案：范围 + Cell0 拼接
+    private var qmaxRangeText: String? {
+        guard analytics?.minQmax != nil || analytics?.qmaxCell0 != nil else { return nil }
+        var text = ""
+        if let lo = analytics?.minQmax, let hi = analytics?.maxQmax {
+            text = "\(lo)–\(hi) mAh"
+        }
+        if let c = analytics?.qmaxCell0 {
+            text = text.isEmpty ? "Cell0：\(c) mAh" : text + "\nCell0：\(c) mAh"
+        }
+        return text.isEmpty ? nil : text
+    }
+
+    /// 电流数据文案：充电/放电峰值拼接
+    private var currentDataText: String? {
+        guard analytics?.maxChargeCurrent != nil || analytics?.maxDischargeCurrent != nil else { return nil }
+        var text = ""
+        if let c = analytics?.maxChargeCurrent {
+            text = "充电峰值 ≈ \(String(format: "%.2f", c)) A"
+        }
+        if let d = analytics?.maxDischargeCurrent {
+            let line = "放电峰值 ≈ \(String(format: "%.2f", d)) A"
+            text = text.isEmpty ? line : text + "\n" + line
+        }
+        return text.isEmpty ? nil : text
     }
 
     /// 已在上方单独展示、不必重复出现的字段

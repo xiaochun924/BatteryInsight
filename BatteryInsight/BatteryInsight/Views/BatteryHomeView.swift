@@ -171,11 +171,7 @@ struct BatteryHomeView: View {
                     title: "估算温度",
                     accessory: valueText(String(format: "约 %.0f ℃", temp), color: .primary))
             }
-            if let nominal = latestAnalytics?.nominalChargeCapacity {
-                var text = "出厂 \(nominal) mAh"
-                if let raw = latestAnalytics?.rawMaxCapacity {
-                    text += " / 实时 \(raw) mAh"
-                }
+            if let text = capacityText {
                 infoRow(
                     icon: "bolt.big", tint: .teal,
                     title: "电池容量",
@@ -212,6 +208,16 @@ struct BatteryHomeView: View {
             .font(.subheadline.bold())
             .foregroundStyle(color)
             .lineLimit(1)
+    }
+
+    /// 电池容量文案：出厂 + 实时拼接（移出 ViewBuilder，避免 Void 表达式无法转成 View）
+    private var capacityText: String? {
+        guard let nominal = latestAnalytics?.nominalChargeCapacity else { return nil }
+        var text = "出厂 \(nominal) mAh"
+        if let raw = latestAnalytics?.rawMaxCapacity {
+            text += " / 实时 \(raw) mAh"
+        }
+        return text
     }
 
     // MARK: - 趋势图表卡（参考截图第二张卡片）
