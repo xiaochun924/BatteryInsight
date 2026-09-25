@@ -857,21 +857,26 @@ enum AnalyticsLogParser {
         return out.sorted { $0.location < $1.location }
     }
 
-    /// Daily 聚合日志的「数据对应日期」：取 metadata 行的 startTimestamp。
+    /// Daily 聚合日志的「数据对应日期」：表头 `timestamp`（生成时刻）的前一天。
     ///
-    /// 这类日志表头 `timestamp` 是文件生成时刻（通常次日早上 8 点），
-    /// 电池统计实际对应 `startTimestamp` 那天（如 `2026-09-24T00:00:00Z` → 9 月 24 日）。
+    /// 实测两份 Daily 日志都符合「次日生成、数据对应前一天」的惯例：
+    /// - `2026-09-25 08:01` 生成 → 数据 9/24（其 startTimestamp=9/24T00:00:00Z 恰好也是数据日）
+    /// - `2026-09-19 11:25` 生成 → 数据 **9/18**（其 startTimestamp=9/19T00:00:00Z 是报告日，
+    ///   直接用它会把记录日期误推一天到 9/19，导致与已有 9/19 记录判重、被覆盖）
+    ///
+    /// 所以不能依赖 startTimestamp，统一用「生成时刻 - 1 天」。
     /// 若电池行没有自带日期，用它代替表头时间戳，避免记录被推到生成日。
     private static func fileStartDate(from text: String) -> Date? {
         let prefix = String(text.prefix(50_000))
         guard let regex = try? NSRegularExpression(
-            pattern: "\"startTimestamp\"\\s*:\\s*\"([^\"]+)\""),
+            pattern: "\"timestamp\"\\s*:\\s*\"([^\"]+)\""),
               let m = regex.firstMatch(in: prefix,
                                        range: NSRange(location: 0, length: prefix.count)),
               m.numberOfRanges > 1,
-              let r = Range(m.range(at: 1), in: prefix)
+              let r = Range(m.range(at: 1), in: prefix),
+              let generated = parseDateString(String(prefix[r]))
         else { return nil }
-        return parseDateString(String(prefix[r]))
+        return Calendar.current.date(byAdding: .day, value: -1, to: generated)
     }
 
     /// 取该位置之前最近的一个时间戳；一个文件 = 一天，电池行就用表头那个时间
