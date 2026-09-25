@@ -65,7 +65,7 @@ struct RecordDetailView: View {
     }
 
     private var titleText: String {
-        record.date.formatted(.dateTime.month().day()) + " 电池记录"
+        record.date.chineseDateText + " 电池记录"
     }
 
     // MARK: - 电池数据
@@ -79,11 +79,11 @@ struct RecordDetailView: View {
                     ? Optional(record.maximumCapacity)
                     : analytics?.systemHealthPercent
                 if let h {
-                    row("系统健康度", valueText: String(format: "%.2f", h) + " %", tint: .green)
+                    row("系统健康度", valueText: String(format: "%.1f", h) + " %", tint: .green)
                 }
                 if let nominal = analytics?.nominalChargeCapacity,
                    let design = analytics?.designCapacity, design > 0 {
-                    row("计算健康度", valueText: String(format: "%.2f", Double(nominal) / Double(design) * 100) + " %",
+                    row("计算健康度", valueText: String(format: "%.1f", Double(nominal) / Double(design) * 100) + " %",
                         tint: .green,
                         caption: "额定容量 ÷ 出厂容量")
                 }
@@ -232,7 +232,7 @@ struct RecordDetailView: View {
     private var shareText: String {
         var lines: [String] = [titleText]
         if record.maximumCapacity > 0 {
-            lines.append("系统健康度：\(String(format: "%.0f", record.maximumCapacity))%")
+            lines.append("系统健康度：\(String(format: "%.1f", record.maximumCapacity))%")
         }
         if let cycles = record.cycleCount ?? analytics?.cycleCount {
             lines.append("循环次数：\(cycles)")
