@@ -47,21 +47,26 @@ enum DerivedMetrics {
 
     // MARK: - 计算健康度
 
-    /// 计算健康度 = 当前实际容量 / 出厂（设计）容量 × 100%
+    /// 计算健康度 = 当前实际容量 / 出厂容量 × 100%
     ///
     /// 这就是截图里 101.72% 的来源：4906 / 4823 ≈ 1.0172。
     /// 出现 >100% 是正常的——出厂容量是标称值，实际电芯容量存在正公差。
+    /// 出厂容量优先取日志 DesignCapacity（旧格式），iOS 26 日志缺失时按机型查官方标称。
     private static func computedHealth(_ r: AnalyticsRecord) -> DerivedMetric? {
-        guard let nominal = r.nominalChargeCapacity,
-              let design = r.designCapacity, design > 0 else { return nil }
+        guard let nominal = r.nominalChargeCapacity else { return nil }
+        let design = r.designCapacity ?? DeviceBatterySpec.current?.factoryCapacity
+        guard let design, design > 0 else { return nil }
         let pct = Double(nominal) / Double(design) * 100
+        let basis = r.designCapacity != nil
+            ? "实际 \(nominal) mAh ÷ 出厂 \(design) mAh"
+            : "实际 \(nominal) mAh ÷ 机型出厂 \(design) mAh（官方标称）"
         return DerivedMetric(
             title: "计算健康度",
             value: String(format: "%.1f", pct),
             unit: "%",
             icon: "function",
             formula: "当前实际容量 ÷ 出厂容量 × 100%",
-            basis: "实际 \(nominal) mAh ÷ 出厂 \(design) mAh")
+            basis: basis)
     }
 
     // MARK: - 容量余量

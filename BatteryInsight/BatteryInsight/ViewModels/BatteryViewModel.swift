@@ -305,6 +305,7 @@ final class BatteryViewModel: ObservableObject {
     ///
     /// 之前导入完只写进 `analyticsRecords`，主页依旧是空的，
     /// 从用户角度看跟"导入失败"没区别。同一天只写一条，重复导入不会刷出一堆点。
+    /// 健康度一律用「自己计算」的口径（见 healthPercent），不写系统值。
     private func syncHealthFromAnalytics(_ records: [AnalyticsRecord]) {
         let calendar = Calendar.current
         for r in records {
@@ -320,11 +321,13 @@ final class BatteryViewModel: ObservableObject {
         }
     }
 
-    /// 优先用系统写入的健康度；日志没写就用「实际容量 ÷ 出厂容量」算一个
+    /// 健康度一律用「自己计算」的口径：额定容量 ÷ 出厂容量 × 100%。
+    /// 出厂容量优先取日志 DesignCapacity（旧格式），iOS 26 日志缺失时按机型查官方标称。
+    /// 不再使用系统写入的 MaximumCapacityPercent。
     private func healthPercent(of r: AnalyticsRecord) -> Double? {
-        if let h = r.systemHealthPercent { return h }
-        guard let nominal = r.nominalChargeCapacity,
-              let design = r.designCapacity, design > 0 else { return nil }
+        guard let nominal = r.nominalChargeCapacity else { return nil }
+        let design = r.designCapacity ?? DeviceBatterySpec.current?.factoryCapacity
+        guard let design, design > 0 else { return nil }
         return Double(nominal) / Double(design) * 100
     }
 
