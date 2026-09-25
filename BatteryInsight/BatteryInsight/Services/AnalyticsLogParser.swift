@@ -40,6 +40,7 @@ enum AnalyticsLogParser {
         case minTemp, maxTemp, avgTemp
         case dailyMinSoc, dailyMaxSoc
         case operatingTime, updateTime
+        case firstUse, batterySerialChanged
     }
 
     private struct Pick {
@@ -71,8 +72,6 @@ enum AnalyticsLogParser {
     private static let voltageKeys = ["packvoltage"]
     private static let tempKeys    = ["averagetemperature"]
 
-    /// 候选键名：只有「后缀匹配」类字段在这里给候选列表；其余精确字段走 exactKeys。
-    /// 注意带 default 兜底：未列出的 Field 返回空数组，switch 保持穷尽。
     private static func candidates(for field: Field) -> [String] {
         switch field {
         case .health: return healthKeys
@@ -104,6 +103,8 @@ enum AnalyticsLogParser {
         .dailyMaxSoc: ["dailymaxsoc", "maximumchargesoc"],
         .operatingTime: ["totaloperatingtime"],
         .updateTime: ["updatetime"],
+        .firstUse: ["dofu"],
+        .batterySerialChanged: ["batteryserialchanged"],
     ]
 
     /// 判断某个键对应哪个字段；不属于电池字段则返回 nil
@@ -144,6 +145,8 @@ enum AnalyticsLogParser {
         case .temperature: return v >= -50 && v <= 150
         case .operatingTime: return v >= 0 && v <= 100_000_000
         case .updateTime: return v >= 1_000_000_000 && v <= 5_000_000_000
+        case .firstUse: return v >= 1_000_000_000 && v <= 5_000_000_000
+        case .batterySerialChanged: return v == 0 || v == 1
         }
     }
 
@@ -382,6 +385,19 @@ enum AnalyticsLogParser {
         return nil
     }
 
+    /// 提取 JSON 布尔值（如 `"last_value_BatterySerialChanged": false`）。
+    /// `numeric()` 会拒绝 Bool，所以布尔字段必须单独走这条路径。
+    private static func boolExact(_ field: Field, in dict: [String: Any]) -> Bool? {
+        guard let keys = exactKeys[field] else { return nil }
+        for candidate in keys {
+            for (key, value) in dict where normalized(key).hasSuffix(candidate) {
+                if let b = value as? Bool { return b }
+                if let n = numeric(value) { return n != 0 }
+            }
+        }
+        return nil
+    }
+
     // MARK: - 组装记录
 
     private static func record(from source: [String: Any],
@@ -426,6 +442,8 @@ enum AnalyticsLogParser {
             dailyMaxSoc: exact(.dailyMaxSoc).map { Int($0.rounded()) },
             totalOperatingHours: exact(.operatingTime).map { $0 / 10 },
             lastUpdateTime: exact(.updateTime).map { Date(timeIntervalSince1970: $0) },
+            firstUseDate: exact(.firstUse).map { Date(timeIntervalSince1970: $0) },
+            batterySerialChanged: boolExact(.batterySerialChanged, in: source),
             voltage: pick(.voltage, in: source).map { $0.value / 1000 },
             temperature: pick(.temperature, in: source).map { $0.value },
             rawSnippet: String(raw.prefix(4000)),
@@ -446,6 +464,8 @@ enum AnalyticsLogParser {
         if r.designCapacity != nil { score += 1 }
         if r.maxPackVoltage != nil { score += 1 }
         if r.maxTemperature != nil { score += 1 }
+        if r.firstUseDate != nil { score += 1 }
+        if r.batterySerialChanged != nil { score += 1 }
         return score + min(r.extraFields.count, 10)
     }
 
