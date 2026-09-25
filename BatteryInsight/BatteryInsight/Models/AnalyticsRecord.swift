@@ -44,6 +44,15 @@ struct AnalyticsRecord: Codable, Identifiable, Equatable, Sendable {
     /// 当天未插电总时长（秒）—— UnpluggedDurationEnergyViewNew.daily_total_Duration。
     /// 即「文件抓取到的续航」：当天拔掉电源的累计时长，转成「X时Y分」直接展示。
     var unpluggedDurationSeconds: Double?
+    /// 当天亮屏总时长（秒）—— intervalUsageActiveDurationsHistogramViews 段
+    /// 所有 first_value_ScreenOnDuration 求和（96 个 15 分钟区间）。
+    var screenOnSeconds: Double?
+    /// 当天唤醒总时长（秒）—— 同段所有 first_value_WakeDuration 求和。
+    var awakeSeconds: Double?
+    /// 当天充电总时长（分钟）—— sum_of_SystemChargingDuration 求和。
+    var chargingMinutes: Int?
+    /// 当天充电次数 —— sum_of_SystemChargingCount 求和。
+    var chargingCount: Int?
     /// 记录更新时间 —— UpdateTime（Unix 秒）
     var lastUpdateTime: Date?
     /// 首次使用日期 —— DOFU（Date Of First Use，Unix 秒）。
@@ -93,6 +102,10 @@ struct AnalyticsRecord: Codable, Identifiable, Equatable, Sendable {
          dailyMaxSoc: Int? = nil,
          totalOperatingHours: Double? = nil,
          unpluggedDurationSeconds: Double? = nil,
+         screenOnSeconds: Double? = nil,
+         awakeSeconds: Double? = nil,
+         chargingMinutes: Int? = nil,
+         chargingCount: Int? = nil,
          lastUpdateTime: Date? = nil,
          firstUseDate: Date? = nil,
          batterySerialChanged: Bool? = nil,
@@ -123,6 +136,10 @@ struct AnalyticsRecord: Codable, Identifiable, Equatable, Sendable {
         self.dailyMaxSoc = dailyMaxSoc
         self.totalOperatingHours = totalOperatingHours
         self.unpluggedDurationSeconds = unpluggedDurationSeconds
+        self.screenOnSeconds = screenOnSeconds
+        self.awakeSeconds = awakeSeconds
+        self.chargingMinutes = chargingMinutes
+        self.chargingCount = chargingCount
         self.lastUpdateTime = lastUpdateTime
         self.firstUseDate = firstUseDate
         self.batterySerialChanged = batterySerialChanged
@@ -141,7 +158,8 @@ struct AnalyticsRecord: Codable, Identifiable, Equatable, Sendable {
              designCapacity, rawMaxCapacity, minFCC, maxFCC, minQmax, maxQmax, qmaxCell0,
              minPackVoltage, maxPackVoltage, maxChargeCurrent, maxDischargeCurrent,
              minTemperature, maxTemperature, dailyMinSoc, dailyMaxSoc,
-             totalOperatingHours, unpluggedDurationSeconds, lastUpdateTime,
+             totalOperatingHours, unpluggedDurationSeconds, screenOnSeconds, awakeSeconds,
+             chargingMinutes, chargingCount, lastUpdateTime,
              voltage, temperature, rawSnippet, extraFields, fieldSources, firstUseDate,
              batterySerialChanged
     }
@@ -170,6 +188,10 @@ struct AnalyticsRecord: Codable, Identifiable, Equatable, Sendable {
         dailyMaxSoc = try? c.decode(Int.self, forKey: .dailyMaxSoc)
         totalOperatingHours = try? c.decode(Double.self, forKey: .totalOperatingHours)
         unpluggedDurationSeconds = try? c.decode(Double.self, forKey: .unpluggedDurationSeconds)
+        screenOnSeconds = try? c.decode(Double.self, forKey: .screenOnSeconds)
+        awakeSeconds = try? c.decode(Double.self, forKey: .awakeSeconds)
+        chargingMinutes = try? c.decode(Int.self, forKey: .chargingMinutes)
+        chargingCount = try? c.decode(Int.self, forKey: .chargingCount)
         lastUpdateTime = try? c.decode(Date.self, forKey: .lastUpdateTime)
         firstUseDate = try? c.decode(Date.self, forKey: .firstUseDate)
         batterySerialChanged = try? c.decode(Bool.self, forKey: .batterySerialChanged)
@@ -198,6 +220,8 @@ struct AnalyticsRecord: Codable, Identifiable, Equatable, Sendable {
             || nominalChargeCapacity != nil || designCapacity != nil
             || voltage != nil || temperature != nil
             || unpluggedDurationSeconds != nil
+            || screenOnSeconds != nil || awakeSeconds != nil
+            || chargingMinutes != nil || chargingCount != nil
             || !extraFields.isEmpty
     }
 
@@ -205,6 +229,17 @@ struct AnalyticsRecord: Codable, Identifiable, Equatable, Sendable {
     func withUnpluggedDuration(_ seconds: Double) -> AnalyticsRecord {
         var r = self
         r.unpluggedDurationSeconds = seconds
+        return r
+    }
+
+    /// 把当天续航时段数据（亮屏/唤醒秒数、充电分钟/次数）补进记录
+    func withUsageDurations(screenOn: Double?, awake: Double?,
+                            chargingMinutes: Int?, chargingCount: Int?) -> AnalyticsRecord {
+        var r = self
+        if let v = screenOn { r.screenOnSeconds = v }
+        if let v = awake { r.awakeSeconds = v }
+        if let v = chargingMinutes { r.chargingMinutes = v }
+        if let v = chargingCount { r.chargingCount = v }
         return r
     }
 

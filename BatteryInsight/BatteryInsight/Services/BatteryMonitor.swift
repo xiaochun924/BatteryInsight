@@ -14,8 +14,8 @@ final class BatteryMonitor: ObservableObject {
     @Published private(set) var level: Float = -1              // 0.0~1.0，<0 表示未知
     @Published private(set) var state: UIDevice.BatteryState = .unknown
 
-    /// 采样间隔（秒），默认 60s
-    var samplingInterval: TimeInterval = 60
+    /// 采样间隔（秒），默认 15s——电量/状态更新要跟得上用户看到的系统状态栏
+    var samplingInterval: TimeInterval = 15
 
     /// 每产生一个有效采样点时回调
     var onSample: ((BatterySample) -> Void)?

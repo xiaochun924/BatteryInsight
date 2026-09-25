@@ -122,7 +122,30 @@ struct RecordDetailView: View {
     /// 当日未插电时长文案：「X小时Y分钟」
     private var unpluggedText: String? {
         guard let s = analytics?.unpluggedDurationSeconds, s > 0 else { return nil }
-        let total = Int(s.rounded())
+        return durationText(seconds: s)
+    }
+
+    /// 当日亮屏时长文案（秒 → X小时Y分钟）
+    private var screenOnText: String? {
+        guard let s = analytics?.screenOnSeconds, s > 0 else { return nil }
+        return durationText(seconds: s)
+    }
+
+    /// 当日后台唤醒时长文案（秒 → X小时Y分钟）
+    private var awakeText: String? {
+        guard let s = analytics?.awakeSeconds, s > 0 else { return nil }
+        return durationText(seconds: s)
+    }
+
+    /// 当日充电时长文案（分钟 → X小时Y分钟）
+    private var chargingText: String? {
+        guard let m = analytics?.chargingMinutes, m > 0 else { return nil }
+        return durationText(seconds: Double(m) * 60)
+    }
+
+    /// 秒数 → 「X小时Y分钟」（不足 1 小时只显示分钟）
+    private func durationText(seconds: Double) -> String {
+        let total = Int(seconds.rounded())
         let hours = total / 3600
         let minutes = total % 3600 / 60
         if hours == 0 { return "\(minutes)分钟" }
@@ -143,13 +166,28 @@ struct RecordDetailView: View {
                 Text("计算健康度 = 额定容量 ÷ 出厂容量（出厂容量按机型取官方标称），仅供参考。")
             }
 
-            if unpluggedText != nil {
+            if unpluggedText != nil || screenOnText != nil
+                || awakeText != nil || chargingText != nil {
                 Section {
                     headerLabel("当日续航", icon: "clock.fill", tint: .green)
-                    row("未插电时长", valueText: unpluggedText ?? "", tint: .green,
-                        caption: "当天拔掉电源的累计时长，取自分析日志")
+                    if let t = screenOnText {
+                        row("亮屏时长", valueText: t, tint: .green,
+                            caption: "当天屏幕点亮累计时长")
+                    }
+                    if let t = awakeText {
+                        row("后台唤醒", valueText: t, tint: .orange,
+                            caption: "当天系统活跃（唤醒）累计时长")
+                    }
+                    if let t = chargingText {
+                        row("充电时长", valueText: t, tint: .blue,
+                            caption: "当天连接电源充电累计时长")
+                    }
+                    if let t = unpluggedText {
+                        row("未插电时长", valueText: t, tint: .green,
+                            caption: "当天拔掉电源的累计时长")
+                    }
                 } footer: {
-                    Text("该时长为分析日志 UnpluggedDurationEnergyViewNew 记录的当天未插电累计时长。")
+                    Text("时长均取自分析日志：亮屏/唤醒为 intervalUsage 段 15 分钟区间求和，充电为 SystemChargingDuration 汇总，未插电为 UnpluggedDurationEnergyViewNew。")
                 }
             }
 
@@ -396,6 +434,10 @@ struct RecordDetailView: View {
             return "thermometer.medium"
         case let t where t.contains("次数") || t.contains("循环"):
             return "arrow.2.circlepath"
+        case let t where t.contains("唤醒"):
+            return "sun.max.fill"
+        case let t where t.contains("充电"):
+            return "bolt.fill"
         case let t where t.contains("时长") || t.contains("运行"):
             return "clock.fill"
         case let t where t.contains("备注"):
@@ -422,6 +464,15 @@ struct RecordDetailView: View {
         }
         if let u = unpluggedText {
             lines.append("当日未插电时长：\(u)")
+        }
+        if let s = screenOnText {
+            lines.append("当日亮屏时长：\(s)")
+        }
+        if let a = awakeText {
+            lines.append("当日后台唤醒：\(a)")
+        }
+        if let c = chargingText {
+            lines.append("当日充电时长：\(c)")
         }
         if let v = analytics?.rawMaxCapacity {
             lines.append("实时容量：\(v) mAh")

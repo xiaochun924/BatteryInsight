@@ -181,6 +181,12 @@ enum AnalyticsLogParser {
         // 当天未插电总时长（秒）按日缓存：UnpluggedDurationEnergyViewNew 是独立段，
         // 不单独成记录，解析后合并进同一天的主记录
         var durationByDay: [Date: Double] = [:]
+        // 当天亮屏 / 唤醒（秒）、充电（分钟 / 次数）按日缓存：都来自独立汇总段，
+        // 同样解析后合并进同一天的主记录
+        var screenOnByDay: [Date: Double] = [:]
+        var awakeByDay: [Date: Double] = [:]
+        var chargingMinByDay: [Date: Int] = [:]
+        var chargingCountByDay: [Date: Int] = [:]
 
         for entry in entries {
             guard let object = dictionary(from: entry.raw) else { continue }
@@ -193,6 +199,40 @@ enum AnalyticsLogParser {
                 if let date = date {
                     let day = Calendar.current.startOfDay(for: date)
                     if durationByDay[day] == nil { durationByDay[day] = duration }
+                }
+                continue
+            }
+            // 亮屏 / 唤醒时长段：intervalUsageActiveDurationsHistogramViews 每个区间
+            // 记 first_value_ScreenOnDuration / first_value_WakeDuration（秒），96 个
+            // 15 分钟区间求和就是当天总量。
+            if let name = object["name"] as? String,
+               name == "intervalUsageActiveDurationsHistogramViews",
+               let message = object["message"] as? [String: Any] {
+                let date = fileDate ?? nearestDate(before: entry.start, in: stamps)
+                if let date = date {
+                    let day = Calendar.current.startOfDay(for: date)
+                    if let v = numeric(message["first_value_ScreenOnDuration"]), v > 0 {
+                        screenOnByDay[day, default: 0] += v
+                    }
+                    if let v = numeric(message["first_value_WakeDuration"]), v > 0 {
+                        awakeByDay[day, default: 0] += v
+                    }
+                }
+                continue
+            }
+            // 充电时长 / 次数汇总段：sum_of_SystemChargingDuration（分钟）/ Count
+            if let message = object["message"] as? [String: Any],
+               message["sum_of_SystemChargingDuration"] != nil
+                || message["sum_of_SystemChargingCount"] != nil {
+                let date = fileDate ?? nearestDate(before: entry.start, in: stamps)
+                if let date = date {
+                    let day = Calendar.current.startOfDay(for: date)
+                    if let v = numeric(message["sum_of_SystemChargingDuration"]), v > 0 {
+                        chargingMinByDay[day, default: 0] += Int(v)
+                    }
+                    if let v = numeric(message["sum_of_SystemChargingCount"]), v > 0 {
+                        chargingCountByDay[day, default: 0] += Int(v)
+                    }
                 }
                 continue
             }
@@ -241,6 +281,19 @@ enum AnalyticsLogParser {
             }
         }
 
+        // 把当天亮屏 / 唤醒 / 充电数据合并进同一天主记录
+        if !screenOnByDay.isEmpty || !awakeByDay.isEmpty
+            || !chargingMinByDay.isEmpty || !chargingCountByDay.isEmpty {
+            result.records = result.records.map { r in
+                let day = Calendar.current.startOfDay(for: r.date)
+                return r.withUsageDurations(
+                    screenOn: r.screenOnSeconds ?? screenOnByDay[day],
+                    awake: r.awakeSeconds ?? awakeByDay[day],
+                    chargingMinutes: r.chargingMinutes ?? chargingMinByDay[day],
+                    chargingCount: r.chargingCount ?? chargingCountByDay[day])
+            }
+        }
+
         if result.records.isEmpty {
             result.warnings.append(
                 "未识别到电池数据。请确认选中的是「分析数据」里的 "
@@ -267,6 +320,10 @@ enum AnalyticsLogParser {
         Array("esigncapacity".utf8), Array("esign_capacity".utf8),
         // 当天未插电总时长段（UnpluggedDurationEnergyViewNew.daily_total_Duration）
         Array("npluggedduration".utf8), Array("ailytotalduration".utf8),
+        // 当天亮屏 / 唤醒时长段（intervalUsageActiveDurationsHistogramViews）
+        Array("irstvaluescreenonduration".utf8), Array("irstvaluewakeduration".utf8),
+        // 当天充电时长 / 次数汇总（sum_of_SystemChargingDuration / Count）
+        Array("umofsystemchargingduration".utf8), Array("umofsystemchargingcount".utf8),
     ]
 
     /// 所有 hint 的首字节（小写 ASCII）：y/a/o/e。用于滑窗前的快速排除，

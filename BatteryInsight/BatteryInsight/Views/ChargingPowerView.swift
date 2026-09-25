@@ -6,26 +6,17 @@ import SwiftUI
 /// 1. **实时充电检测**：电量环 + 充电状态 + 耗电速率 + 剩余时长 + 进行中会话进度
 /// 2. **充电功率检测**：当前功率（充电速度 × 电池容量 × 标称电压 估算）
 ///    + 最大充电功率（分析日志实测：峰值充电电流 × 峰值电压）
-/// 3. **充电统计**：今日充电次数 / 平均充电时长 / 平均充电速度 / 整夜充电次数
-/// 4. **充电会话**：每次「开始充电 → 结束充电」的完整记录
 struct ChargingPowerView: View {
     @EnvironmentObject private var vm: BatteryViewModel
 
-    /// 会话按时间倒序（最新在前）
-    private var sessions: [ChargingSession] {
-        vm.sessions.sorted { $0.startDate > $1.startDate }
-    }
-
     var body: some View {
         Group {
-            if !vm.hasRealLevel && vm.sessions.isEmpty {
+            if !vm.hasRealLevel && vm.latestAnalytics == nil && !vm.sessions.contains(where: { $0.isActive }) {
                 emptyState
             } else {
                 List {
                     chargingCard
                     powerSection
-                    statsSection
-                    sessionsSection
                 }
             }
         }
@@ -97,6 +88,8 @@ struct ChargingPowerView: View {
             .padding(.vertical, 6)
         } header: {
             Text("实时充电检测")
+        } footer: {
+            Text("电量与状态来自系统 UIDevice：仅前台采样、系统对第三方精度约 ±5%，显示与状态栏可能有 1–5% 偏差；耗电速率与剩余时长由近期采样估算。")
         }
     }
 
@@ -216,143 +209,6 @@ struct ChargingPowerView: View {
         }
     }
 
-    // MARK: - 充电统计
-
-    private var statsSection: some View {
-        Section {
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 12),
-                                GridItem(.flexible(), spacing: 12)], spacing: 12) {
-                statCell(icon: "bolt.fill", tint: .yellow,
-                         title: "今日充电",
-                         value: "\(BatteryAnalytics.todayChargeCount(sessions: vm.sessions))",
-                         unit: "次")
-                statCell(icon: "clock.fill", tint: .blue,
-                         title: "平均充电时长",
-                         value: avgHoursText,
-                         unit: "")
-                statCell(icon: "gauge.with.dots.needle.67percent", tint: .green,
-                         title: "平均充电速度",
-                         value: avgSpeedText,
-                         unit: "")
-                statCell(icon: "moon.zzz.fill", tint: .indigo,
-                         title: "整夜充电",
-                         value: "\(BatteryAnalytics.overnightCount(sessions: vm.sessions))",
-                         unit: "次")
-            }
-            .padding(.vertical, 4)
-        } header: {
-            Text("充电统计")
-        }
-    }
-
-    /// 平均充电时长文案（无数据时显示「--」）
-    private var avgHoursText: String {
-        guard let h = BatteryAnalytics.averageChargeHours(sessions: vm.sessions) else { return "--" }
-        return String(format: "%.1f", h) + " 小时"
-    }
-
-    /// 平均充电速度文案（无数据时显示「--」）
-    private var avgSpeedText: String {
-        guard let s = BatteryAnalytics.averageChargeSpeed(sessions: vm.sessions) else { return "--" }
-        return String(format: "%.1f", s) + " %/h"
-    }
-
-    private func statCell(icon: String, tint: Color,
-                          title: String, value: String, unit: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label(title, systemImage: icon)
-                .font(.caption)
-                .foregroundStyle(tint)
-            HStack(alignment: .firstTextBaseline, spacing: 3) {
-                Text(value)
-                    .font(.title3.bold())
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.6)
-                if !unit.isEmpty {
-                    Text(unit)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
-    }
-
-    // MARK: - 充电会话列表
-
-    private var sessionsSection: some View {
-        Section {
-            if sessions.isEmpty {
-                Text("暂无充电记录。连接电源开始充电后，App 会自动记录每次充电会话。")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 12)
-            } else {
-                ForEach(sessions) { session in
-                    sessionRow(session)
-                }
-            }
-        } header: {
-            Text("充电会话（\(sessions.count) 次）")
-        }
-    }
-
-    private func sessionRow(_ s: ChargingSession) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // 标题行：开始时间 + 进行中徽章
-            HStack {
-                Label(s.startDate.chineseDateTimeText, systemImage: "bolt.fill")
-                    .font(.subheadline)
-                    .foregroundStyle(s.isActive ? .yellow : .secondary)
-                Spacer()
-                if s.isActive {
-                    Text("进行中")
-                        .font(.caption2.bold())
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 2)
-                        .background(.yellow.opacity(0.15), in: Capsule())
-                        .foregroundStyle(.yellow)
-                }
-            }
-
-            // 核心指标：时长 / 充入 / 速度
-            HStack(spacing: 16) {
-                sessionMetric("时长", s.durationText, "clock.fill")
-                sessionMetric("充入", String(format: "+%.0f%%", s.gainedPercent), "arrow.up.circle.fill")
-                if let speed = s.speedPercentPerHour {
-                    sessionMetric("速度", String(format: "%.1f%%/小时", speed),
-                                  "gauge.with.dots.needle.67percent")
-                }
-                Spacer(minLength: 0)
-            }
-
-            // 整夜充电标记
-            if s.isOvernight {
-                Label("整夜充电", systemImage: "moon.zzz.fill")
-                    .font(.caption2)
-                    .foregroundStyle(.indigo)
-            }
-        }
-        .padding(.vertical, 4)
-    }
-
-    private func sessionMetric(_ label: String, _ value: String, _ icon: String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Label(label, systemImage: icon)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.subheadline.bold())
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-        }
-    }
-
     // MARK: - 空态（模拟器 / 完全无数据时）
 
     private var emptyState: some View {
@@ -361,7 +217,7 @@ struct ChargingPowerView: View {
                 .font(.largeTitle)
                 .foregroundStyle(.secondary)
             Text("暂无充电数据").font(.headline)
-            Text("连接电源开始充电后，\nApp 会自动记录充电状态、耗电速率与充电会话。")
+            Text("连接电源开始充电后，\nApp 会自动记录充电状态与耗电速率。")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
