@@ -160,6 +160,9 @@ enum AnalyticsLogParser {
         }
 
         let stamps = timestampMatches(in: text)
+        // Daily 聚合日志：文件 metadata 行的 startTimestamp 才是数据对应日期，
+        // 表头 timestamp 是生成时刻（次日早上），直接用会把记录日期推后一天
+        let fileDate = fileStartDate(from: text)
         let entries = topLevelJSONObjects(in: text).filter { looksLikeBattery($0.raw) }
         result.entriesFound = entries.count
 
@@ -169,9 +172,10 @@ enum AnalyticsLogParser {
         for entry in entries {
             guard let object = dictionary(from: entry.raw),
                   let source = batterySource(in: object) else { continue }
-            // 电池行通常自己不带时间戳，用「它之前最近的一个」——
-            // 也就是本文件表头里那个，这正是日志的生成时间
+            // 日期优先级：电池行自带日期 > 文件聚合起始日（startTimestamp）
+            // > 行之前最近的时间戳（表头生成时刻）
             let date = extractDate(from: object)
+                ?? fileDate
                 ?? nearestDate(before: entry.start, in: stamps)
             guard let date = date else { missingDate = true; continue }
             if let r = record(from: source, date: date, raw: entry.raw) {
@@ -182,7 +186,7 @@ enum AnalyticsLogParser {
         // 兜底：JSON 结构对不上时（截断 / 只复制了片段 / plist 格式），
         // 直接在全文里扫「键 → 数值」
         if records.isEmpty {
-            let fallback = scanFallback(text, stamps: stamps)
+            let fallback = scanFallback(text, stamps: stamps, fileDate: fileDate)
             records = fallback
             if !records.isEmpty {
                 result.warnings.append("未匹配到标准 JSON 结构，已用通用键值扫描兜底，请与原始日志核对")
@@ -525,7 +529,7 @@ enum AnalyticsLogParser {
 
     /// 不依赖 JSON 结构，直接在全文里扫「键 → 数值」。
     /// 覆盖 JSON 的 `"key": 123` 与 plist 的 `<key>k</key><integer>123</integer>`。
-    private static func scanFallback(_ text: String, stamps: [Stamp]) -> [AnalyticsRecord] {
+    private static func scanFallback(_ text: String, stamps: [Stamp], fileDate: Date?) -> [AnalyticsRecord] {
         var pairs: [Pair] = []
         pairs.append(contentsOf: scanPairs(
             in: text,
@@ -542,7 +546,7 @@ enum AnalyticsLogParser {
         for group in cluster(pairs) {
             guard let start = group.map(\.location).min(),
                   group.contains(where: { isCore($0.field) }),
-                  let date = nearestDate(before: start, in: stamps) ?? firstStamp(in: stamps)
+                  let date = fileDate ?? nearestDate(before: start, in: stamps) ?? firstStamp(in: stamps)
             else { continue }
 
             var sources: [String: String] = [:]
@@ -694,6 +698,23 @@ enum AnalyticsLogParser {
             }
         }
         return out.sorted { $0.location < $1.location }
+    }
+
+    /// Daily 聚合日志的「数据对应日期」：取 metadata 行的 startTimestamp。
+    ///
+    /// 这类日志表头 `timestamp` 是文件生成时刻（通常次日早上 8 点），
+    /// 电池统计实际对应 `startTimestamp` 那天（如 `2026-09-24T00:00:00Z` → 9 月 24 日）。
+    /// 若电池行没有自带日期，用它代替表头时间戳，避免记录被推到生成日。
+    private static func fileStartDate(from text: String) -> Date? {
+        let prefix = String(text.prefix(50_000))
+        guard let regex = try? NSRegularExpression(
+            pattern: "\"startTimestamp\"\\s*:\\s*\"([^\"]+)\""),
+              let m = regex.firstMatch(in: prefix,
+                                       range: NSRange(location: 0, length: prefix.count)),
+              m.numberOfRanges > 1,
+              let r = Range(m.range(at: 1), in: prefix)
+        else { return nil }
+        return parseDateString(String(prefix[r]))
     }
 
     /// 取该位置之前最近的一个时间戳；一个文件 = 一天，电池行就用表头那个时间
