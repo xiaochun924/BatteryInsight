@@ -30,6 +30,46 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
+        CFBundleDisplayName: 电池洞察
+        CFBundleDevelopmentRegion: zh_CN
+        # ══ 让本 App 出现在「文件」App / 分享菜单的「用其他应用打开」列表里 ══
+        # 注意：这些必须写在 project.yml 的 info.properties 里才会进最终包。
+        # 实测只改 Info.plist 文件是无效的 —— XcodeGen 生成的是自己的 plist，
+        # 打出来的包里连 CFBundleDisplayName 都不存在。
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: iOS 分析日志
+            CFBundleTypeRole: Viewer
+            # Alternate：系统默认归属不变，本 App 只作为可选项出现
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - com.xiaochun924.batteryinsight.ips
+          - CFBundleTypeName: 文本与 JSON
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - public.plain-text
+              - public.json
+              - public.text
+          # 兜底：`.ips.ca.synced`（iCloud 同步的日志）这类复合后缀无法被上面识别，
+          # 声明 public.data 保证它也能分享过来
+          - CFBundleTypeName: 其他数据文件
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - public.data
+        # `.ips` 没有公开 UTI，必须自己导出一个，系统才能把文件关联到本 App
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: com.xiaochun924.batteryinsight.ips
+            UTTypeDescription: iOS 分析日志
+            UTTypeConformsTo:
+              - public.plain-text
+            UTTypeTagSpecification:
+              public.filename-extension:
+                - ips
+                - log
+              public.mime-type: text/plain
+        # 只读取内容，不需要在原位编辑文档
+        LSSupportsOpeningDocumentsInPlace: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.audi.battery.BatteryInsight
