@@ -239,7 +239,7 @@ struct AnalyticsView: View {
                         Text(r.dateText).font(.subheadline)
                         Spacer()
                         if let h = r.systemHealthPercent {
-                            Text(String(format: "系统 %.0f%%", h))
+                            Text(String(format: "系统 %.1f%%", h))
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                     }
