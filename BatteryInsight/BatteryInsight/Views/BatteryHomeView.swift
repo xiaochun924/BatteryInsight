@@ -440,7 +440,7 @@ struct BatteryHomeView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            // 列3：日期徽章 + 当天未插电时长（文件抓取的续航，X时Y分）
+            // 列3：日期徽章 + 当天亮屏时长（文件抓取的续航，X时Y分）
             VStack(alignment: .trailing, spacing: 6) {
                 Text(record.date.chineseDateText)
                     .font(.caption.bold())
@@ -448,7 +448,7 @@ struct BatteryHomeView: View {
                     .padding(.vertical, 3)
                     .background(.quaternary, in: Capsule())
                     .foregroundStyle(.secondary)
-                if let seconds = analytics?.unpluggedDurationSeconds {
+                if let seconds = analytics?.screenOnSeconds {
                     Text(durationText(seconds))
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -463,8 +463,8 @@ struct BatteryHomeView: View {
         .padding(.vertical, 6)
     }
 
-    /// 当天未插电时长文案：「X时Y分」—— 文件抓取到的当天续航
-    /// （UnpluggedDurationEnergyViewNew.daily_total_Duration，秒，参考竞品同口径显示）
+    /// 当天亮屏时长文案：「X时Y分」—— 文件抓取到的当天亮屏累计时长
+    /// （intervalUsageActiveDurationsHistogramViews.first_value_ScreenOnDuration 求和，秒）
     private func durationText(_ seconds: Double) -> String {
         let total = Int(seconds.rounded())
         return "\(total / 3600)时\(total % 3600 / 60)分"
