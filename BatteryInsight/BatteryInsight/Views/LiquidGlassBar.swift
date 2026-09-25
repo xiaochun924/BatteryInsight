@@ -31,8 +31,9 @@ struct LiquidGlassTopBar: ViewModifier {
         content
             // 完全隐藏系统导航栏
             .toolbar(.hidden, for: .navigationBar)
-            // 顶部留出悬浮栏高度，避免内容顶到状态栏
-            .safeAreaPadding(.top, 8)
+            // 顶部留出悬浮栏高度：顶栏胶囊约占「状态栏 + 40pt」，
+            // 内容从胶囊下方开始（48pt），避免页面内容与悬浮顶栏互相遮挡
+            .safeAreaPadding(.top, 48)
             .overlay(alignment: .top) { bar }
     }
 
