@@ -89,7 +89,64 @@ final class BatteryViewModel: ObservableObject {
         sessions = store.sessions
         healthRecords = store.healthRecords
         analyticsRecords = store.analyticsRecords
+        migrateLegacyAnalyticsIfNeeded()
         recalc()
+    }
+
+    // MARK: - 旧记录字段补齐
+
+    /// 迁移标记：只跑一次，避免每次启动都重解析
+    private static let migrationKey = "bi.migrated.analytics.v2"
+
+    /// 旧版本落盘的记录只有 健康度/循环/容量，没有满充容量、Qmax、电压、电流等字段，
+    /// 用户重装后不重新导入就看不到新内容。这里用落盘的原始片段（rawSnippet）
+    /// 跑一遍当前解析器补齐，原记录的其他字段保持不变。
+    private func migrateLegacyAnalyticsIfNeeded() {
+        guard !UserDefaults.standard.bool(forKey: Self.migrationKey) else { return }
+        UserDefaults.standard.set(true, forKey: Self.migrationKey)
+        guard analyticsRecords.contains(where: { $0.rawMaxCapacity == nil && !$0.rawSnippet.isEmpty })
+        else { return }
+
+        let updated = analyticsRecords.map { old -> AnalyticsRecord in
+            guard old.rawMaxCapacity == nil, !old.rawSnippet.isEmpty,
+                  let fresh = AnalyticsLogParser.parse(old.rawSnippet).records.first
+            else { return old }
+            return Self.merged(old, fresh)
+        }
+        store.replaceAnalytics(updated)
+        analyticsRecords = updated
+    }
+
+    /// 旧记录保留原有字段，只把新解析出来的字段补进去
+    private static func merged(_ old: AnalyticsRecord, _ fresh: AnalyticsRecord) -> AnalyticsRecord {
+        AnalyticsRecord(
+            id: old.id,
+            date: old.date,
+            systemHealthPercent: old.systemHealthPercent ?? fresh.systemHealthPercent,
+            cycleCount: old.cycleCount ?? fresh.cycleCount,
+            nominalChargeCapacity: old.nominalChargeCapacity ?? fresh.nominalChargeCapacity,
+            designCapacity: old.designCapacity ?? fresh.designCapacity,
+            rawMaxCapacity: fresh.rawMaxCapacity,
+            minFCC: fresh.minFCC,
+            maxFCC: fresh.maxFCC,
+            minQmax: fresh.minQmax,
+            maxQmax: fresh.maxQmax,
+            qmaxCell0: fresh.qmaxCell0,
+            minPackVoltage: fresh.minPackVoltage,
+            maxPackVoltage: fresh.maxPackVoltage,
+            maxChargeCurrent: fresh.maxChargeCurrent,
+            maxDischargeCurrent: fresh.maxDischargeCurrent,
+            minTemperature: fresh.minTemperature,
+            maxTemperature: fresh.maxTemperature,
+            dailyMinSoc: fresh.dailyMinSoc,
+            dailyMaxSoc: fresh.dailyMaxSoc,
+            totalOperatingHours: fresh.totalOperatingHours,
+            lastUpdateTime: fresh.lastUpdateTime,
+            voltage: old.voltage ?? fresh.voltage,
+            temperature: old.temperature ?? fresh.temperature,
+            rawSnippet: old.rawSnippet,
+            extraFields: old.extraFields,
+            fieldSources: old.fieldSources)
     }
 
     private func handle(_ sample: BatterySample) {
