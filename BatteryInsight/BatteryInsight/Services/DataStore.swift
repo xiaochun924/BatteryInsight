@@ -2,6 +2,11 @@ import Foundation
 
 /// 本地数据存储（demo 使用 UserDefaults + Codable）。
 /// 生产环境建议换成 SwiftData / CoreData，采样数据量会随时间持续增长。
+///
+/// Swift 6：DataStore 是共享单例、所有 `@Published` 状态都在同一隔离域被读写，
+/// 唯一调用方 `BatteryViewModel` 是 `@MainActor`，因此整体标记为主线程隔离，
+/// 满足严格并发检查且不引入跨线程访问同一份可变数据的问题。
+@MainActor
 final class DataStore: ObservableObject {
     static let shared = DataStore()
 

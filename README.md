@@ -5,7 +5,7 @@ iOS 项目集合，包含两个 SwiftUI 应用。每次推送到 `main` 会自�
 | 项目 | 说明 | 部署目标 |
 |------|------|---------|
 | [`HA-iOS`](./HA-iOS) | 基于 Home Assistant 的智能家居客户端：连接 HA 实例、设备仪表盘、WebSocket 实时状态、收藏。**iOS 26 液态玻璃 + Swift 6** | iOS 26.0+ |
-| [`BatteryInsight`](./BatteryInsight) | iPhone 电池效率分析：耗电速率、充电会话、健康度衰减追踪、省电建议，**支持从系统「分析数据」Analytics-*.ips 粘贴导入真实健康度/循环次数** | iOS 16.0+ |
+| [`BatteryInsight`](./BatteryInsight) | iPhone 电池效率分析：耗电速率、充电会话、健康度衰减追踪、省电建议，**支持从系统「分析数据」Analytics-*.ips 粘贴导入真实健康度/循环次数**。iOS 26 液态玻璃悬浮顶栏 + 实时充电检测，Swift 6 | iOS 26.0+ |
 
 ## 编译状态
 

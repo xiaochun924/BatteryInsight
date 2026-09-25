@@ -52,16 +52,23 @@ struct RecordDetailView: View {
             case .others: othersTab
             }
         }
-        .navigationTitle(titleText)
-        .navigationBarTitleDisplayMode(.large)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+        // 液态玻璃悬浮顶栏：左上角圆形玻璃返回按钮 + 居中胶囊标题 + 右上分享
+        .liquidGlassTopBar(
+            title: titleText,
+            showsBackButton: true,
+            trailing: {
                 ShareLink(item: shareText) {
-                    Label("分享", systemImage: "square.and.arrow.up")
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .frame(width: 40, height: 40)
+                        .background(.ultraThinMaterial, in: Circle())
+                        .overlay(Circle().strokeBorder(.white.opacity(0.25), lineWidth: 0.5))
                 }
             }
-        }
-        // 复制成功的反馈用图标变化（✓）表达；sensoryFeedback 需要 iOS 17，部署目标是 16
+        )
+        // 复制成功的反馈用图标变化（✓）表达；部署目标 iOS 26，可用 sensoryFeedback
+        .sensoryFeedback(.success, trigger: copiedText)
     }
 
     private var displayTab: Tab {

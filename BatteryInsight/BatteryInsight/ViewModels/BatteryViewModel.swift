@@ -72,6 +72,10 @@ final class BatteryViewModel: ObservableObject {
     var levelPercent: Double? { level >= 0 ? level * 100 : nil }
     var stateText: String { state.displayName }
     var isCharging: Bool { state.isCharging }
+    /// 进行中的充电会话（供充电检测卡展示当前充电进度）
+    var activeChargingSession: ChargingSession? {
+        sessions.first { $0.isActive }
+    }
 
     init() {
         monitor.onSample = { [weak self] sample in

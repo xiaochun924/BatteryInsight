@@ -28,22 +28,30 @@ final class BatteryMonitor: ObservableObject {
     init() {
         UIDevice.current.isBatteryMonitoringEnabled = true
 
+        // Swift 6：`.receive(on: RunLoop.main)` 保证回调发生在主 RunLoop，
+        // 但编译器仍视为非隔离闭包，访问 @MainActor 的 self 需显式跳回主线程。
         NotificationCenter.default.publisher(for: UIDevice.batteryLevelDidChangeNotification)
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.capture(reason: .system) }
+            .sink { [weak self] _ in
+                MainActor.assumeIsolated { self?.capture(reason: .system) }
+            }
             .store(in: &bag)
 
         NotificationCenter.default.publisher(for: UIDevice.batteryStateDidChangeNotification)
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.capture(reason: .system) }
+            .sink { [weak self] _ in
+                MainActor.assumeIsolated { self?.capture(reason: .system) }
+            }
             .store(in: &bag)
     }
 
     func start() {
         capture(reason: .launch)
         timer?.invalidate()
+        // Timer 的 block 是 @Sendable，会在主 RunLoop 触发，但编译器按非隔离对待，
+        // 因此这里用 assumeIsolated 在主线程上执行采样（Timer 本就调度在主线程）。
         timer = Timer.scheduledTimer(withTimeInterval: samplingInterval, repeats: true) { [weak self] _ in
-            self?.capture(reason: .timer)
+            MainActor.assumeIsolated { self?.capture(reason: .timer) }
         }
     }
 

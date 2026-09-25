@@ -7,14 +7,16 @@ import SwiftUI
 /// 为什么不用 `.formatted(.dateTime.month().day())`：那会跟随设备语言/地区，
 /// 英文环境下渲染成 "Sep 23"，与中文界面不一致。这里固定 zh_CN 本地化。
 extension Date {
-    private static let cnMonthDay: DateFormatter = {
+    // Swift 6：DateFormatter 非 Sendable，作为共享静态缓存需显式 `nonisolated(unsafe)`。
+    // DateFormatter 内部通过锁保证线程安全；这些实例只读不改配置，跨线程使用是安全的。
+    nonisolated(unsafe) private static let cnMonthDay: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "zh_CN")
         f.dateFormat = "M月d日"
         return f
     }()
 
-    private static let cnFull: DateFormatter = {
+    nonisolated(unsafe) private static let cnFull: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "zh_CN")
         f.dateFormat = "yyyy年M月d日 HH:mm"

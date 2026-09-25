@@ -80,15 +80,19 @@ struct BatteryHomeView: View {
                 emptyState
             } else {
                 List {
+                    chargingCard
                     deviceCard
                     trendCard
                     recordsSection
                 }
             }
         }
-        .navigationTitle("电池健康")
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
+        // 液态玻璃悬浮顶栏：完全隐藏系统导航栏，居中玻璃胶囊标题，
+        // 左上角菜单 + 右上角「+ 分析」作为顶栏动作（无返回按钮，本页是根页面）
+        .liquidGlassTopBar(
+            title: "电池健康",
+            showsBackButton: false,
+            leading: {
                 Menu {
                     Button { showingAdd = true } label: {
                         Label("手动添加记录", systemImage: "plus")
@@ -103,18 +107,29 @@ struct BatteryHomeView: View {
                         Label("周期报告", systemImage: "calendar")
                     }
                 } label: {
-                    Image(systemName: "ellipsis.circle")
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .frame(width: 40, height: 40)
+                        .background(.ultraThinMaterial, in: Circle())
+                        .overlay(Circle().strokeBorder(.white.opacity(0.25), lineWidth: 0.5))
                 }
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                // 对应截图右上角的「+ 分析」胶囊按钮
+                .buttonStyle(.plain)
+            },
+            trailing: {
+                // 右上角「+ 分析」玻璃胶囊按钮
                 Button { showingFileImporter = true } label: {
                     Label("分析", systemImage: "plus")
+                        .font(.subheadline.bold())
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 9)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .overlay(Capsule().strokeBorder(.white.opacity(0.25), lineWidth: 0.5))
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.plain)
                 .disabled(vm.isImporting)
             }
-        }
+        )
         .sheet(isPresented: $showingAdd) { addSheet }
         .sheet(isPresented: $showingAnalytics) { AnalyticsView() }
         .sheet(isPresented: $showingTips) { TipsView() }
@@ -139,6 +154,92 @@ struct BatteryHomeView: View {
         .overlay {
             if vm.isImporting { ImportingOverlay(stage: vm.importStage) }
         }
+    }
+
+    // MARK: - 实时充电检测卡（电池健康 + 充电检测的实时区块）
+
+    /// 实时电量、充电状态、耗电速率、剩余可用时长，以及进行中的充电会话。
+    /// 数据来自 `BatteryMonitor` 的前台采样（模拟器/后台无数据时显示「--」）。
+    private var chargingCard: some View {
+        Section {
+            VStack(spacing: 14) {
+                // 电量环 + 状态
+                HStack(spacing: 16) {
+                    ZStack {
+                        Circle()
+                            .stroke(Color.green.opacity(0.15), lineWidth: 10)
+                        Circle()
+                            .trim(from: 0, to: batteryLevelFraction)
+                            .stroke(
+                                stateGradient,
+                                style: StrokeStyle(lineWidth: 10, lineCap: .round)
+                            )
+                            .rotationEffect(.degrees(-90))
+                        VStack(spacing: 2) {
+                            Image(systemName: vm.isCharging ? "bolt.fill" : "battery.50")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(vm.isCharging ? .yellow : .green)
+                            Text(batteryLevelText)
+                                .font(.title2.bold())
+                                .monospacedDigit()
+                        }
+                    }
+                    .frame(width: 96, height: 96)
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        // 充电状态
+                        Label(vm.stateText, systemImage: vm.state.symbolName)
+                            .font(.headline)
+                            .foregroundStyle(vm.isCharging ? .yellow : .green)
+                        // 耗电速率 / 剩余时长
+                        if vm.isCharging {
+                            if let active = vm.activeChargingSession {
+                                Label("充电中 \(active.gainedPercent, format: .number.precision(.fractionLength(0)))%",
+                                      systemImage: "arrow.up.circle")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else {
+                            if let rate = vm.drainRate {
+                                Label("耗电 \(rate, format: .number.precision(.fractionLength(1)))%/小时",
+                                      systemImage: "arrow.down.circle")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                            if let hours = vm.remainingHours {
+                                Label("约剩 \(hours, format: .number.precision(.fractionLength(1))) 小时",
+                                      systemImage: "timer")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+            .padding(.vertical, 6)
+        } header: {
+            Text("充电检测")
+        }
+    }
+
+    /// 电量环填充比例（0~1；无真实电量时为 0）
+    private var batteryLevelFraction: Double {
+        guard vm.hasRealLevel else { return 0 }
+        return min(max(vm.level, 0), 1)
+    }
+
+    /// 电量环文案（无真实电量时显示「--」）
+    private var batteryLevelText: String {
+        vm.levelPercent.map { "\(Int($0.rounded()))%" } ?? "--"
+    }
+
+    /// 电量环渐变色：充电黄色，放电/待机绿色
+    private var stateGradient: LinearGradient {
+        if vm.isCharging {
+            return LinearGradient(colors: [.yellow, .orange], startPoint: .topLeading, endPoint: .bottomTrailing)
+        }
+        return LinearGradient(colors: [.green, .teal], startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 
     // MARK: - 设备信息卡（参考截图第一张卡片：一行一条）

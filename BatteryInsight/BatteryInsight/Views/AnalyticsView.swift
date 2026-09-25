@@ -47,31 +47,47 @@ struct AnalyticsView: View {
                     }
                 }
             }
-            .navigationTitle("日志分析")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Menu {
-                        Button { showingGuide = true } label: {
-                            Label("怎么找到日志", systemImage: "questionmark.circle")
+            // 液态玻璃悬浮顶栏：左上角圆形玻璃返回按钮 + 居中胶囊标题，
+            // 右上角放「菜单 + 导入」动作
+            .liquidGlassTopBar(
+                title: "日志分析",
+                showsBackButton: true,
+                trailing: {
+                    HStack(spacing: 10) {
+                        Menu {
+                            Button { showingGuide = true } label: {
+                                Label("怎么找到日志", systemImage: "questionmark.circle")
+                            }
+                            Button { showingPaste = true } label: {
+                                Label("粘贴日志文本", systemImage: "doc.on.clipboard")
+                            }
+                            Button { showingReport = true } label: {
+                                Label("周期报告", systemImage: "calendar")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(.primary)
+                                .frame(width: 40, height: 40)
+                                .background(.ultraThinMaterial, in: Circle())
+                                .overlay(Circle().strokeBorder(.white.opacity(0.25), lineWidth: 0.5))
                         }
-                        Button { showingPaste = true } label: {
-                            Label("粘贴日志文本", systemImage: "doc.on.clipboard")
+                        .buttonStyle(.plain)
+
+                        Button { showingFileImporter = true } label: {
+                            Image(systemName: "square.and.arrow.down")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(.primary)
+                                .frame(width: 40, height: 40)
+                                .background(.ultraThinMaterial, in: Circle())
+                                .overlay(Circle().strokeBorder(.white.opacity(0.25), lineWidth: 0.5))
                         }
-                        Button { showingReport = true } label: {
-                            Label("周期报告", systemImage: "calendar")
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
+                        .buttonStyle(.plain)
+                        .disabled(vm.isImporting)
+                        .accessibilityLabel("导入")
                     }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { showingFileImporter = true } label: {
-                        Label("导入", systemImage: "square.and.arrow.down")
-                    }
-                    .disabled(vm.isImporting)
-                }
-            }
+            )
             // 直接从最顶层 VC 弹系统选择器，不经过中间 sheet（避免先闪一层白卡）
             .documentPicker(
                 isPresented: $showingFileImporter,

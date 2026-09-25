@@ -21,10 +21,11 @@ enum DocumentPickerLauncher {
 
     /// 从最顶层 ViewController 直接弹出系统文件选择器。
     /// - `asCopy: true`：拷一份到本 App 临时目录再读，避免直接依赖源位置的访问权限
+    @MainActor
     static func present(contentTypes: [UTType],
                         allowsMultipleSelection: Bool,
-                        onPick: @escaping ([URL]) -> Void,
-                        onCancel: (() -> Void)? = nil) {
+                        onPick: @escaping @MainActor ([URL]) -> Void,
+                        onCancel: (@MainActor () -> Void)? = nil) {
         guard let scene = UIApplication.shared.connectedScenes
             .compactMap({ $0 as? UIWindowScene })
             .first(where: { $0.activationState == .foregroundActive }),
@@ -52,13 +53,16 @@ enum DocumentPickerLauncher {
 
 /// 选择器回调。选完 / 取消都先收起选择器再回调，
 /// 否则回调里立刻弹 alert 会被"present 已在进行中"顶掉。
+/// Swift 6：UIKit 委托回调运行在主线程，标记 @MainActor 满足严格并发。
+@MainActor
 private final class PickerDelegate: NSObject, UIDocumentPickerDelegate {
     static var associatedKey: UInt8 = 0
 
-    let onPick: ([URL]) -> Void
-    let onCancel: (() -> Void)?
+    let onPick: @MainActor ([URL]) -> Void
+    let onCancel: (@MainActor () -> Void)?
 
-    init(onPick: @escaping ([URL]) -> Void, onCancel: (() -> Void)?) {
+    init(onPick: @escaping @MainActor ([URL]) -> Void,
+         onCancel: (@MainActor () -> Void)?) {
         self.onPick = onPick
         self.onCancel = onCancel
     }
@@ -66,13 +70,13 @@ private final class PickerDelegate: NSObject, UIDocumentPickerDelegate {
     func documentPicker(_ controller: UIDocumentPickerViewController,
                         didPickDocumentsAt urls: [URL]) {
         controller.dismiss(animated: true) { [onPick] in
-            onPick(urls)
+            MainActor.assumeIsolated { onPick(urls) }
         }
     }
 
     func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
         controller.dismiss(animated: true) { [onCancel] in
-            onCancel?()
+            MainActor.assumeIsolated { onCancel?() }
         }
     }
 }
@@ -85,12 +89,12 @@ struct DocumentPickerModifier: ViewModifier {
     @Binding var isPresented: Bool
     let contentTypes: [UTType]
     var allowsMultipleSelection = false
-    let onPick: ([URL]) -> Void
-    var onCancel: (() -> Void)? = nil
+    let onPick: @MainActor ([URL]) -> Void
+    var onCancel: (@MainActor () -> Void)? = nil
 
     func body(content: Content) -> some View {
-        // 单参数版 onChange：部署目标 iOS 16，双参数版要 iOS 17
-        content.onChange(of: isPresented) { presented in
+        // iOS 17+ 双参数版 onChange；部署目标已是 iOS 26
+        content.onChange(of: isPresented) { _, presented in
             guard presented else { return }
             DocumentPickerLauncher.present(
                 contentTypes: contentTypes,
@@ -110,8 +114,8 @@ extension View {
     func documentPicker(isPresented: Binding<Bool>,
                         contentTypes: [UTType],
                         allowsMultipleSelection: Bool = false,
-                        onPick: @escaping ([URL]) -> Void,
-                        onCancel: (() -> Void)? = nil) -> some View {
+                        onPick: @escaping @MainActor ([URL]) -> Void,
+                        onCancel: (@MainActor () -> Void)? = nil) -> some View {
         modifier(DocumentPickerModifier(isPresented: isPresented,
                                         contentTypes: contentTypes,
                                         allowsMultipleSelection: allowsMultipleSelection,

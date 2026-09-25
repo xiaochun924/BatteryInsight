@@ -23,7 +23,8 @@ struct TipsView: View {
                 .padding(.vertical, 4)
             }
             .listStyle(.insetGrouped)
-            .navigationTitle("优化建议")
+            // 液态玻璃悬浮顶栏：返回按钮 + 居中胶囊标题
+            .liquidGlassTopBar(title: "优化建议")
         }
     }
 }

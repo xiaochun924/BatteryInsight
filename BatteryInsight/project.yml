@@ -3,7 +3,7 @@ name: BatteryInsight
 options:
   bundleIdPrefix: com.audi.battery
   deploymentTarget:
-    iOS: "16.0"
+    iOS: "26.0"
   # 生成时把 xcassets 的 AppIcon 自动接上，避免图标缺失
   generateEmptyDirectories: true
 
@@ -74,7 +74,10 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.audi.battery.BatteryInsight
         PRODUCT_NAME: BatteryInsight
-        SWIFT_VERSION: "5.9"
+        # Swift 6 语言模式；@MainActor 推断与完整严格并发检查
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        SWIFT_APPROACHABLE_CONCURRENCY: YES
         MARKETING_VERSION: 1.0
         CURRENT_PROJECT_VERSION: 1
         GENERATE_INFOPLIST_FILE: false

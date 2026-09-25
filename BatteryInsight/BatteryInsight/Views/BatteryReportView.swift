@@ -30,8 +30,8 @@ struct BatteryReportView: View {
 
                 reportSection(report)
             }
-            .navigationTitle("周期报告")
-            .navigationBarTitleDisplayMode(.inline)
+            // 液态玻璃悬浮顶栏：返回按钮 + 居中胶囊标题
+            .liquidGlassTopBar(title: "周期报告")
         }
     }
 
