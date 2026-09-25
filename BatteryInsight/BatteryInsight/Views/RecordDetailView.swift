@@ -1,18 +1,18 @@
 import SwiftUI
 import UIKit
 
-/// 单条检测记录的详情页（布局对齐主流电池工具的记录详情）：
+/// 单条检测记录的详情页 —— 布局对齐主流电池工具的「9月24日 电池记录」界面：
 ///
-/// - 标题：「9月23日 电池记录」
 /// - 顶部「电池数据 / 其他数据」分段切换：
-///   - **电池数据**：电池健康卡（计算健康度 / 循环次数）+ 核心数据卡
-///     （实时容量 / 出厂容量 / 温度）
-///   - **其他数据**：对齐竞品口径的解读字段（满充容量范围、Qmax、电压范围、电流峰值、
-///     温度区间、每日 SOC、累计运行时间……），映射关系均经真实日志逐值核对。
-///     仅展示已解读的实用字段，未解读的原始键值不再呈现。
+///   - **电池数据**：电池健康（计算健康度大字 + 2×2 指标格：衰减稳定性 / 电芯一致性 /
+///     充电次数 / 电池状态）+ 当日续航（当天未插电时长）+ 核心数据（额定容量 / 出厂容量）
+///   - **其他数据**：温度区间、运行时长、满充容量范围、Qmax、电压、电流、每日 SOC、
+///     记录更新时间等日志细节字段。
+/// - 只展示日志 / 机型规格的真实数据；没有数据源的字段（亮屏时长、主动充电、
+///   卡顿记录等）一律不显示，不编造数值。
 ///
 /// 数据来源：手动记录（HealthRecord）+ 当天导入的分析日志（AnalyticsRecord）。
-/// 只有手动记录时也能打开，缺的字段显示「--」。
+/// 只有手动记录时也能打开，缺的字段自动隐藏。
 struct RecordDetailView: View {
     let record: HealthRecord
     let analytics: AnalyticsRecord?
@@ -85,45 +85,84 @@ struct RecordDetailView: View {
         DeviceBatterySpec.current?.factoryCapacity ?? analytics?.designCapacity
     }
 
+    private var nominalCapacity: Int? {
+        analytics?.nominalChargeCapacity
+    }
+
+    /// 计算健康度：额定容量 ÷ 出厂容量 × 100%（不再显示系统健康度）
+    private var healthPercent: Double? {
+        guard let n = nominalCapacity, let f = factoryCapacity, f > 0 else { return nil }
+        return Double(n) / Double(f) * 100
+    }
+
+    /// 衰减稳定性：出厂容量 − 额定容量（正值，mAh）
+    private var degradedCapacity: Int? {
+        guard let n = nominalCapacity, let f = factoryCapacity, f > n else { return nil }
+        return f - n
+    }
+
+    /// 电芯一致性：最大 Qmax − 最小 Qmax（mAh）
+    private var cellConsistency: Int? {
+        guard let hi = analytics?.maxQmax, let lo = analytics?.minQmax, hi >= lo else { return nil }
+        return hi - lo
+    }
+
+    private var cycleCount: Int? {
+        record.cycleCount ?? analytics?.cycleCount
+    }
+
+    /// 电池状态：基于计算健康度的简单分级
+    private var batteryState: (text: String, color: Color)? {
+        guard let h = healthPercent else { return nil }
+        if h >= 95 { return ("优秀", .green) }
+        if h >= 80 { return ("正常", .green) }
+        return ("需关注", .orange)
+    }
+
+    /// 当日未插电时长文案：「X小时Y分钟」
+    private var unpluggedText: String? {
+        guard let s = analytics?.unpluggedDurationSeconds, s > 0 else { return nil }
+        let total = Int(s.rounded())
+        let hours = total / 3600
+        let minutes = total % 3600 / 60
+        if hours == 0 { return "\(minutes)分钟" }
+        return "\(hours)小时\(minutes)分钟"
+    }
+
     // MARK: - 电池数据
 
     private var batteryTab: some View {
         Group {
             Section {
                 headerLabel("电池健康", icon: "heart.fill", tint: .green)
-                // 健康度一律用「计算健康度」（额定容量 ÷ 出厂容量），不再显示系统健康度
-                if let nominal = analytics?.nominalChargeCapacity,
-                   let factory = factoryCapacity, factory > 0 {
-                    row("计算健康度", valueText: String(format: "%.1f", Double(nominal) / Double(factory) * 100) + " %",
-                        tint: .green,
-                        caption: "额定容量 ÷ 出厂容量")
+                if let h = healthPercent {
+                    healthHero(h)
                 }
-                if let cycles = record.cycleCount ?? analytics?.cycleCount {
-                    row("充电次数（循环）", valueText: "\(cycles) 次", tint: .blue)
-                }
-                if let note = record.note, !note.isEmpty {
-                    row("备注", valueText: note, tint: .gray)
-                }
+                metricGrid()
             } footer: {
                 Text("计算健康度 = 额定容量 ÷ 出厂容量（出厂容量按机型取官方标称），仅供参考。")
             }
 
+            if unpluggedText != nil {
+                Section {
+                    headerLabel("当日续航", icon: "clock.fill", tint: .green)
+                    row("未插电时长", valueText: unpluggedText ?? "", tint: .green,
+                        caption: "当天拔掉电源的累计时长，取自分析日志")
+                } footer: {
+                    Text("该时长为分析日志 UnpluggedDurationEnergyViewNew 记录的当天未插电累计时长。")
+                }
+            }
+
             Section {
                 headerLabel("核心数据", icon: "info.circle.fill", tint: .green)
-                if let v = analytics?.rawMaxCapacity {
-                    row("实时容量", valueText: "\(v) mAh", tint: .green)
+                if let v = nominalCapacity {
+                    row("额定容量", valueText: "\(v) mAh", tint: .green)
                 }
                 if let v = factoryCapacity {
                     row("出厂容量", valueText: "\(v) mAh", tint: .green,
                         caption: (DeviceBatterySpec.current?.marketingName ?? "") + " 默认容量")
                 }
-                if let nominal = analytics?.nominalChargeCapacity {
-                    row("额定容量", valueText: "\(nominal) mAh", tint: .green)
-                }
-                if let temp = analytics?.temperature {
-                    row("电池温度", valueText: String(format: "%.1f ℃", temp), tint: .orange)
-                }
-                if analytics?.nominalChargeCapacity == nil && record.maximumCapacity == nil {
+                if nominalCapacity == nil && record.maximumCapacity == nil {
                     Text("该记录没有分析日志数据，只有手动录入的数值。")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
@@ -131,7 +170,74 @@ struct RecordDetailView: View {
         }
     }
 
-    // MARK: - 其他数据（对齐主流电池 App 的字段口径，全部来自分析日志真实键）
+    /// 健康度大字（对齐截图：绿色大数字 + 单位 + 口径小字）
+    private func healthHero(_ h: Double) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(String(format: "%.1f", h))
+                .font(.system(size: 34, weight: .bold, design: .rounded))
+                .foregroundStyle(.green)
+                .monospacedDigit()
+            Text("%")
+                .font(.headline.bold())
+                .foregroundStyle(.green)
+            Spacer()
+            Text("额定容量 ÷ 出厂容量")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 6)
+    }
+
+    /// 2×2 指标格（对齐截图：衰减稳定性 / 电芯一致性 / 充电次数 / 电池状态）
+    private func metricGrid() -> some View {
+        LazyVGrid(columns: [
+            GridItem(.flexible(), spacing: 12),
+            GridItem(.flexible(), spacing: 12),
+        ], spacing: 12) {
+            if let d = degradedCapacity {
+                metricCell("衰减稳定性", "\(d)", "mAh", icon: "arrow.down.heart.fill", tint: .orange)
+            }
+            if let c = cellConsistency {
+                metricCell("电芯一致性", "\(c)", "mAh", icon: "equal.circle.fill", tint: .blue)
+            }
+            if let cyc = cycleCount {
+                metricCell("充电次数", "\(cyc)", "次", icon: "arrow.2.circlepath", tint: .blue)
+            }
+            if let st = batteryState {
+                metricCell("电池状态", st.text, "", icon: "checkmark.seal.fill", tint: st.color)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func metricCell(_ title: String, _ value: String, _ unit: String,
+                            icon: String, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.caption)
+                    .foregroundStyle(tint)
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 3) {
+                Text(value)
+                    .font(.title3.bold())
+                    .monospacedDigit()
+                if !unit.isEmpty {
+                    Text(unit)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    // MARK: - 其他数据（全部来自分析日志真实键）
 
     private var othersTab: some View {
         Group {
@@ -140,14 +246,21 @@ struct RecordDetailView: View {
                 if let v = analytics?.rawMaxCapacity {
                     row("实时容量", valueText: "\(v) mAh", tint: .green)
                 }
+                if let v = nominalCapacity {
+                    row("额定容量", valueText: "\(v) mAh", tint: .green)
+                }
                 if let v = factoryCapacity {
                     row("出厂容量", valueText: "\(v) mAh", tint: .green)
                 }
-                if let v = analytics?.nominalChargeCapacity {
-                    row("额定容量", valueText: "\(v) mAh", tint: .green)
-                }
                 if let text = temperatureRangeText {
                     row("温度区间", valueText: text, tint: .orange)
+                }
+                if let h = analytics?.totalOperatingHours {
+                    let hours = Int(h.rounded())
+                    let grouped = NumberFormatter.localizedString(from: NSNumber(value: hours), number: .decimal)
+                    row("运行时长",
+                        valueText: "\(grouped) 小时（\(String(format: "%.1f", h / 24)) 天）",
+                        tint: .gray)
                 }
                 if let lo = analytics?.minFCC, let hi = analytics?.maxFCC {
                     row("满充容量（范围）", valueText: "\(lo)–\(hi) mAh", tint: .green)
@@ -172,20 +285,13 @@ struct RecordDetailView: View {
                 if let d = analytics?.lastUpdateTime {
                     row("记录更新时间", valueText: d.chineseDateText, tint: .gray)
                 }
-                if let h = analytics?.totalOperatingHours {
-                    let hours = Int(h.rounded())
-                    let grouped = NumberFormatter.localizedString(from: NSNumber(value: hours), number: .decimal)
-                    row("累计运行时间",
-                        valueText: "\(grouped) 小时（\(String(format: "%.1f", h / 24)) 天）",
-                        tint: .gray)
-                }
             } footer: {
                 Text("以上字段取自分析日志的电池统计段（last_value_ 系列键），口径与主流电池工具一致；长按数值可复制核对。")
             }
         }
     }
 
-    /// 温度区间文案：历史最高/最低/平均拼接（移出 ViewBuilder，避免 Void 表达式无法转成 View）
+    /// 温度区间文案：历史最高/最低/平均拼接
     private var temperatureRangeText: String? {
         guard let hi = analytics?.maxTemperature else { return nil }
         var text = "历史最高 \(String(format: "%.1f", hi))°"
@@ -234,7 +340,7 @@ struct RecordDetailView: View {
             .padding(.bottom, 2)
     }
 
-    /// 一行：图标 + 名称 + 数值 + 复制按钮（对应截图右侧的拷贝图标）
+    /// 一行：图标 + 名称 + 数值 + 复制按钮
     private func row(_ title: String, valueText: String, tint: Color, caption: String? = nil) -> some View {
         HStack(spacing: 10) {
             Rectangle()
@@ -277,7 +383,7 @@ struct RecordDetailView: View {
         .padding(.vertical, 1)
     }
 
-    /// 按条目名称挑个相近的图标，视觉上对齐截图
+    /// 按条目名称挑个相近的图标
     private func iconFor(_ title: String) -> String {
         switch title {
         case let t where t.contains("健康"):
@@ -290,6 +396,8 @@ struct RecordDetailView: View {
             return "thermometer.medium"
         case let t where t.contains("次数") || t.contains("循环"):
             return "arrow.2.circlepath"
+        case let t where t.contains("时长") || t.contains("运行"):
+            return "clock.fill"
         case let t where t.contains("备注"):
             return "square.and.pencil"
         default:
@@ -300,32 +408,32 @@ struct RecordDetailView: View {
     /// 分享文本：把该条记录的主要字段拼成一段可读文字
     private var shareText: String {
         var lines: [String] = [titleText]
-        if record.maximumCapacity > 0 {
-            lines.append("健康度：\(String(format: "%.1f", record.maximumCapacity))%")
+        if let h = healthPercent {
+            lines.append(String(format: "计算健康度：%.1f%%", h))
         }
-        if let cycles = record.cycleCount ?? analytics?.cycleCount {
-            lines.append("循环次数：\(cycles)")
+        if let cycles = cycleCount {
+            lines.append("充电次数（循环）：\(cycles)")
+        }
+        if let d = degradedCapacity {
+            lines.append("衰减稳定性：\(d) mAh")
+        }
+        if let c = cellConsistency {
+            lines.append("电芯一致性：\(c) mAh")
+        }
+        if let u = unpluggedText {
+            lines.append("当日未插电时长：\(u)")
         }
         if let v = analytics?.rawMaxCapacity {
             lines.append("实时容量：\(v) mAh")
         }
-        if let v = analytics?.nominalChargeCapacity {
+        if let v = nominalCapacity {
             lines.append("额定容量：\(v) mAh")
         }
         if let v = factoryCapacity {
             lines.append("出厂容量：\(v) mAh")
         }
-        if let lo = analytics?.minFCC, let hi = analytics?.maxFCC {
-            lines.append("满充容量（范围）：\(lo)–\(hi) mAh")
-        }
-        if let lo = analytics?.minPackVoltage, let hi = analytics?.maxPackVoltage {
-            lines.append("电压范围：\(String(format: "%.3f", lo))–\(String(format: "%.3f", hi)) V")
-        }
-        if let c = analytics?.maxChargeCurrent {
-            lines.append("充电峰值：≈ \(String(format: "%.2f", c)) A")
-        }
-        if let d = analytics?.maxDischargeCurrent {
-            lines.append("放电峰值：≈ \(String(format: "%.2f", d)) A")
+        if let h = analytics?.totalOperatingHours {
+            lines.append("运行时长：\(Int(h.rounded())) 小时（\(String(format: "%.1f", h / 24)) 天）")
         }
         lines.append("—— 来自 BatteryInsight")
         return lines.joined(separator: "\n")
