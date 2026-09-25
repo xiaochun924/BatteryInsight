@@ -13,6 +13,9 @@ jobs:
     name: Build ${{ matrix.project }}
     # iOS 26 SDK / 液态玻璃需要 Xcode 26；若镜像未带 Xcode 26，把此处改为 macos-26
     runs-on: macos-latest
+    # 发布 Release 附件需要 contents: write（GITHUB_TOKEN 自动注入）
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -69,7 +72,23 @@ jobs:
           zip -qr "../${{ matrix.project }}-unsigned.ipa" Payload
           ls -lh "../${{ matrix.project }}-unsigned.ipa"
 
-      - name: 上传未签名 IPA
+      # Actions artifact 下载固定会再包一层 zip；Release 附件下载得到的就是 .ipa 原文件。
+      # 固定 tag 的 release 每次构建覆盖更新，Releases 页随时可下最新未签名包。
+      - name: 发布未签名 IPA 到 Release（直接下载 .ipa 原文件）
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd "${{ matrix.project }}"
+          IPA="../${{ matrix.project }}-unsigned.ipa"
+          RELEASE_TAG="unsigned-ipa"
+          # 幂等：重复构建先删掉旧 release（含旧 tag），再建新的覆盖
+          gh release delete "$RELEASE_TAG" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$RELEASE_TAG" \
+            --title "未签名 IPA（自动构建）" \
+            --notes "每次 main 分支构建自动更新。下载后可用自有证书重签名安装。" \
+            "$IPA"
+
+      - name: 上传未签名 IPA（zip 备份）
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.project }}-unsigned-ipa
