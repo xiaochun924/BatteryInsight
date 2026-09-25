@@ -194,9 +194,13 @@ struct AnalyticsView: View {
 
     // MARK: - 趋势图
 
-    /// 图上的一个点：日期 + 由「实际容量 ÷ 出厂容量」算出的百分比
+    /// 图上的一个点：日期 + 健康度百分比
+    /// 优先用系统写入的 MaximumCapacityPercent；没有时退回「出厂容量 ÷ 额定容量」
     private var healthPoints: [HealthPoint] {
         vm.analyticsRecords.compactMap { r -> HealthPoint? in
+            if let h = r.systemHealthPercent {
+                return HealthPoint(date: r.date, pct: h)
+            }
             guard let n = r.nominalChargeCapacity,
                   let d = r.designCapacity, d > 0 else { return nil }
             return HealthPoint(date: r.date, pct: Double(n) / Double(d) * 100)
@@ -248,10 +252,10 @@ struct AnalyticsView: View {
                             Text("循环 \(c)").font(.caption2).foregroundStyle(.secondary)
                         }
                         if let n = r.nominalChargeCapacity {
-                            Text("容量 \(n) mAh").font(.caption2).foregroundStyle(.secondary)
+                            Text("出厂 \(n) mAh").font(.caption2).foregroundStyle(.secondary)
                         }
-                        if let d = r.designCapacity {
-                            Text("出厂 \(d)").font(.caption2).foregroundStyle(.secondary)
+                        if let v = r.rawMaxCapacity {
+                            Text("实时 \(v)").font(.caption2).foregroundStyle(.secondary)
                         }
                     }
                 }
