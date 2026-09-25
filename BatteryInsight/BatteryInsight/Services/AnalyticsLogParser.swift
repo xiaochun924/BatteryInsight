@@ -1,94 +1,168 @@
 import Foundation
 
-/// iOS 分析日志（Analytics-*.ips）电池数据解析器。
+/// iOS 分析日志（Analytics-*.ips / log-aggregated-*.ips）电池数据解析器。
 ///
 /// ## 真实结构
 ///
-/// 一个 `.ips` 是「一行元数据头 + 一行 JSON 正文」，系统写入的电池快照在正文的
-/// `batteryhealth` 对象里：
+/// `Analytics-*.ips` 是**一行一个 JSON 对象**。第一行是表头（含 `timestamp`、
+/// `os_version`），其余行的 `message` 对象里带当天聚合的电池统计，键名统一带
+/// `last_value_` 前缀：
 ///
 /// ```
-/// {"timestamp":"2026-09-19 10:23:45.6780 +0800","bug_type":"115","os_version":"iPhone OS 26.0 (23A340)"}
-/// {"batteryhealth":{"CycleCount":123,"DesignCapacity":4823,"MaximumCapacityPercent":100,
-///   "NominalChargeCapacity":4906,"Voltage":4.2,"Temperature":30.5,...},"osVersion":"iPhone OS 26.0"}
+/// {"timestamp":"2026-09-24 08:00:08.00 +0800","os_version":"iPhone OS 26.0 (23A340)",…}
+/// {"message":{"last_value_CycleCount":755,"last_value_MaximumCapacityPercent":88,
+///             "last_value_NominalChargeCapacity":4321,
+///             "last_value_AppleRawMaxCapacity":4400,"last_value_DailyMaxSoc":100,…}}
 /// ```
 ///
-/// ## 解析策略：结构优先，正则兜底
+/// 旧一些的 `log-aggregated-*.ips` 是 plist 风格，键名形如
+/// `com.apple.power.battery.cycle_count`。
 ///
-/// 1. **结构化解析（主路径）**：按花括号配平切出顶层 JSON 对象 → `JSONSerialization`
-///    → 递归定位 `batteryhealth` → 按类型取值。字段归属明确，不会串值，
-///    也不用猜哪个数字属于哪个键。
-/// 2. **宽松正则（兜底）**：JSON 解析失败（截断、用户只复制了片段）时，
-///    退回按位置聚类的字段扫描，保证「有字段就能解析出来」。
+/// ⚠️ 曾经踩过的坑：早期版本假设数据装在 `batteryhealth` 对象里、键名是
+/// `CycleCount` / `MaximumCapacityPercent`。实际日志两者都不符，于是结构化
+/// 解析全部落空，退回正则扫描后抓到的是**无关数字**——表现就是"循环次数、
+/// 健康度都不对"。
 ///
-/// 多份日志拼接时，正文对象往往自带时间戳；不带的话取它**之前最近一个**
-/// 带 timestamp 的对象的日期，而不是导入时刻。
+/// 因此这里**不穷举键名**：把键名规整成「只留字母数字的小写串」后按后缀
+/// 匹配语义，`last_value_CycleCount`、`cycle_count`、`CycleCount`、
+/// `BatteryCycleCount` 都能落到同一条规则上。
 enum AnalyticsLogParser {
+
+    // MARK: - 字段语义
+
+    private enum Field {
+        case health, cycle, nominal, design, voltage, temperature, rawMax
+    }
+
+    private struct Pick {
+        let key: String
+        let value: Double
+    }
+
+    /// 规整键名：小写 + 只保留字母数字。
+    /// `last_value_CycleCount` → `lastvaluecyclecount`
+    private static func normalized(_ key: String) -> String {
+        var out = ""
+        for ch in key.lowercased() where ch.isLetter || ch.isNumber { out.append(ch) }
+        return out
+    }
+
+    /// 候选键名后缀（按优先级）：命中第一个「后缀匹配且数值合理」的为止。
+    /// 之所以是后缀而不是全等，就是要覆盖各种前缀写法。
+    private static let healthKeys  = ["maximumcapacitypercent", "capacitypercent",
+                                      "maximumcapacitypct", "systemhealthpercent"]
+    private static let cycleKeys   = ["cyclecount", "batterycyclecount",
+                                      "cyclecounttotal", "totalcyclecount"]
+    private static let nominalKeys = ["nominalchargecapacity", "nominalcapacity"]
+    private static let designKeys  = ["designcapacity", "designchargecapacity", "maximumfcc"]
+    private static let rawMaxKeys  = ["rawmaxcapacity"]
+    private static let voltageKeys = ["voltage", "batteryvoltage"]
+    private static let tempKeys    = ["temperature", "averagetemperature", "batterytemperature"]
+
+    private static func candidates(for field: Field) -> [String] {
+        switch field {
+        case .health: return healthKeys
+        case .cycle: return cycleKeys
+        case .nominal: return nominalKeys
+        case .design: return designKeys
+        case .rawMax: return rawMaxKeys
+        case .voltage: return voltageKeys
+        case .temperature: return tempKeys
+        }
+    }
+
+    /// 判断某个键对应哪个字段；不属于电池字段则返回 nil
+    private static func field(of key: String) -> Field? {
+        let n = normalized(key)
+        guard !n.isEmpty else { return nil }
+        // 顺序有讲究：nominalchargecapacity 不能被 designcapacity 抢走，
+        // maximumcapacitypercent 也不能因为含 capacity 被当成容量
+        for f in [Field.health, .nominal, .design, .cycle, .rawMax, .voltage, .temperature] {
+            if candidates(for: f).contains(where: { n.hasSuffix($0) }) { return f }
+        }
+        return nil
+    }
+
+    private static func isCore(_ field: Field) -> Bool {
+        switch field {
+        case .health, .cycle, .nominal, .design: return true
+        case .voltage, .temperature, .rawMax: return false
+        }
+    }
+
+    /// 数值合理性。抓错键会给出一个看起来合理的错数字，所以按物理量级再兜一层。
+    private static func plausible(_ field: Field, _ v: Double) -> Bool {
+        switch field {
+        case .health: return v >= 1 && v <= 150
+        case .cycle: return v >= 0 && v <= 10000
+        case .nominal, .design, .rawMax: return v >= 100 && v <= 20000
+        case .voltage: return v > 0 && v <= 10
+        case .temperature: return v >= -50 && v <= 150
+        }
+    }
 
     // MARK: - 对外入口
 
     static func parse(_ text: String) -> AnalyticsParseResult {
         var result = AnalyticsParseResult()
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            result.warnings.append("输入为空，请先粘贴日志内容")
+            result.warnings.append("输入为空")
             return result
         }
 
-        let objects = topLevelJSONObjects(in: text)
+        let stamps = timestampMatches(in: text)
+        let entries = topLevelJSONObjects(in: text).filter { looksLikeBattery($0.raw) }
+        result.entriesFound = entries.count
+
         var records: [AnalyticsRecord] = []
+        var missingDate = false
 
-        // —— 主路径：结构化解析
-        var candidateKeys = Set<String>()
-        if !objects.isEmpty {
-            result.entriesFound = objects.count
-            var carryDate: Date?
-            for raw in objects {
-                guard let object = dictionary(from: raw) else { continue }
-                // 头对象只有时间戳，正文对象才有电池数据：把时间戳往后带
-                if let d = extractDate(from: object) { carryDate = d }
-                if let r = record(from: object, fallbackDate: carryDate, raw: raw) {
-                    records.append(r)
-                } else {
-                    collectBatteryishKeys(in: object, into: &candidateKeys)
-                }
+        for entry in entries {
+            guard let object = dictionary(from: entry.raw),
+                  let source = batterySource(in: object) else { continue }
+            // 电池行通常自己不带时间戳，用「它之前最近的一个」——
+            // 也就是本文件表头里那个，这正是日志的生成时间
+            let date = extractDate(from: object)
+                ?? nearestDate(before: entry.start, in: stamps)
+            guard let date = date else { missingDate = true; continue }
+            if let r = record(from: source, date: date, raw: entry.raw) {
+                records.append(r)
             }
         }
 
-        // —— 兜底：宽松正则扫描（截断 / 拼接残片 / 非 JSON 文本）
+        // 兜底：JSON 结构对不上时（截断 / 只复制了片段 / plist 格式），
+        // 直接在全文里扫「键 → 数值」
         if records.isEmpty {
-            let fallback = scanFallback(text)
-            records = fallback.records
-            result.entriesFound = max(result.entriesFound, fallback.entriesFound)
+            let fallback = scanFallback(text, stamps: stamps)
+            records = fallback
             if !records.isEmpty {
-                result.warnings.append("未能按 JSON 结构解析（日志可能被截断），已改用字段扫描")
+                result.warnings.append("未匹配到标准 JSON 结构，已用通用键值扫描兜底，请与原始日志核对")
             }
         }
 
-        // 去重：同一时间戳 + 同一健康度只保留一条
-        var seen = Set<String>()
-        records = records.filter { r in
-            let key = "\(Int(r.date.timeIntervalSince1970))-\(r.systemHealthPercent ?? -1)"
-            if seen.contains(key) { return false }
-            seen.insert(key)
-            return true
+        // 同一天只留字段最完整的一条：一天日志里电池统计可能出现多次，
+        // 全部入库只会把趋势图挤成一堆重复点
+        var byDay: [Date: AnalyticsRecord] = [:]
+        for r in records {
+            let day = Calendar.current.startOfDay(for: r.date)
+            if let old = byDay[day] {
+                if completeness(r) > completeness(old) { byDay[day] = r }
+            } else {
+                byDay[day] = r
+            }
         }
+        result.records = byDay.values.sorted { $0.date < $1.date }
 
-        records.sort { $0.date < $1.date }
-        result.records = records
-
-        if records.isEmpty {
+        if result.records.isEmpty {
             result.warnings.append(
-                "未识别到电池字段。请确认导入的是「分析数据」中 Analytics-*.ips 文件的内容，"
-                + "且包含 batteryhealth 段落。")
-            if !candidateKeys.isEmpty {
-                // 把日志里真实存在的键报出来：键名因机型/系统版本而异，
-                // 有了这份清单就能直接补映射，不用猜
-                let list = candidateKeys.sorted().prefix(40).joined(separator: "、")
-                result.warnings.append("日志中发现这些疑似电池相关的键：\(list)。"
-                                       + "若确实有电池数据却解析不出，请把这一段发给开发者补齐键名映射。")
+                "未识别到电池数据。请确认选中的是「分析数据」里的 "
+                + "Analytics-*.ips 或 log-aggregated-*.ips。")
+            let keys = collectCandidateKeys(from: text)
+            if !keys.isEmpty {
+                result.warnings.append("日志中发现这些疑似电池相关的键：\(keys)。")
             }
-        } else if records.count == 1 && result.entriesFound > 1 {
-            result.warnings.append("多条日志中仅 1 条含电池数据，通常属正常（该段落非每次采样都写入）")
+        } else if missingDate {
+            result.warnings.append("部分记录未找到时间戳，已跳过")
         }
 
         return result
@@ -96,18 +170,35 @@ enum AnalyticsLogParser {
 
     // MARK: - 顶层 JSON 对象切分
 
+    /// 廉价预筛：28 MB 日志里有几万行 JSON，只有少数几行含电池数据。
+    /// 先做子串判断，避免对每个对象都跑一次 JSONSerialization。
+    private static func looksLikeBattery(_ raw: String) -> Bool {
+        let probes = ["yclecount", "ycle_count", "apacitypercent", "apacity_percent",
+                      "ominalchargecapacity", "ominal_charge_capacity",
+                      "esigncapacity", "esign_capacity"]
+        for p in probes where raw.range(of: p, options: .caseInsensitive) != nil {
+            return true
+        }
+        return false
+    }
+
+    private struct Entry {
+        let raw: String
+        let start: Int
+    }
+
     /// 按花括号配平切出顶层 JSON 对象，正确处理字符串内的 `{` `}` 与转义。
     ///
     /// 走 UTF-8 字节而不是 `String.indices`：几十 MB 的日志按 Character 遍历
-    /// 会慢到十几秒（界面就是这么"黑屏"的），字节扫描快一个数量级。
-    private static func topLevelJSONObjects(in text: String) -> [String] {
+    /// 要十几秒（界面就是这么"黑屏"的），字节扫描快一个数量级。
+    private static func topLevelJSONObjects(in text: String) -> [Entry] {
         let bytes = Array(text.utf8)
         let quote = UInt8(ascii: "\"")
         let backslash = UInt8(ascii: "\\")
         let open = UInt8(ascii: "{")
         let close = UInt8(ascii: "}")
 
-        var out: [String] = []
+        var out: [Entry] = []
         var depth = 0
         var start: Int?
         var inString = false
@@ -133,9 +224,8 @@ enum AnalyticsLogParser {
             } else if c == close {
                 depth -= 1
                 if depth <= 0, let s = start {
-                    if i - s + 1 >= 2,
-                       let piece = String(bytes: bytes[s...i], encoding: .utf8) {
-                        out.append(piece)
+                    if i - s + 1 >= 2, let piece = String(bytes: bytes[s...i], encoding: .utf8) {
+                        out.append(Entry(raw: piece, start: s))
                     }
                     start = nil
                     depth = 0
@@ -145,26 +235,6 @@ enum AnalyticsLogParser {
         return out
     }
 
-    /// 解析不出记录时，收集"看起来跟电池有关"的键名用于诊断。
-    /// 只收集名字里带 battery / capacity / cycle / charge / health 的键，
-    /// 顺带把这类对象内部的键也一并收进来（电池数据常包在某个容器里）。
-    private static func collectBatteryishKeys(in object: [String: Any],
-                                              into out: inout Set<String>,
-                                              depth: Int = 0) {
-        guard depth <= 2 else { return }
-        for (key, value) in object {
-            let lower = key.lowercased()
-            let looksBattery = ["battery", "capacity", "cycle", "charge", "health"]
-                .contains { lower.contains($0) }
-            if !looksBattery { continue }
-            out.insert(key)
-            if let nested = value as? [String: Any] {
-                for sub in nested.keys where out.count < 80 { out.insert("\(key).\(sub)") }
-                collectBatteryishKeys(in: nested, into: &out, depth: depth + 1)
-            }
-        }
-    }
-
     private static func dictionary(from raw: String) -> [String: Any]? {
         guard let data = raw.data(using: .utf8),
               let any = try? JSONSerialization.jsonObject(with: data),
@@ -172,125 +242,71 @@ enum AnalyticsLogParser {
         return dict
     }
 
-    // MARK: - 定位 batteryhealth
+    // MARK: - 定位电池数据
 
-    /// 不同 iOS 版本大小写与命名略有差异
-    private static let batterySectionKeys: Set<String> = [
-        "batteryhealth", "battery_health", "batteryhealthdata", "batterydata"
-    ]
-
-    /// 递归查找 `batteryhealth` 对象；找不到但顶层就带电池字段时，直接返回顶层
+    /// 找出承载电池字段的那个字典。
+    ///
+    /// 优先 `message`（CoreAnalytics 格式），再 `batteryhealth`（旧格式），
+    /// 最后才考虑对象本身或下钻一层。
     private static func batterySource(in object: [String: Any]) -> [String: Any]? {
-        if let direct = findBatterySection(in: object) { return direct }
-        return hasBatteryKey(object) ? object : nil
+        if let message = dictValue("message", in: object), hasCoreField(message) { return message }
+        if let section = findBatterySection(in: object) { return section }
+        if hasCoreField(object) { return object }
+        return deepFind(in: object, depth: 0)
     }
 
-    private static func findBatterySection(in object: [String: Any]) -> [String: Any]? {
-        for (key, value) in object where batterySectionKeys.contains(key.lowercased()) {
-            if let dict = value as? [String: Any] { return dict }
-        }
-        // 下钻一层：个别版本把电池数据放在 payload / data 之类的容器里
-        for (_, value) in object {
-            if let nested = value as? [String: Any],
-               let found = findBatterySection(in: nested) { return found }
+    private static func dictValue(_ key: String, in dict: [String: Any]) -> [String: Any]? {
+        if let v = dict[key] as? [String: Any] { return v }
+        for (k, v) in dict where k.caseInsensitiveCompare(key) == .orderedSame {
+            if let d = v as? [String: Any] { return d }
         }
         return nil
     }
 
-    /// 判断某个对象本身是不是电池对象（即没有 `batteryhealth` 包裹的情况）。
-    ///
-    /// 只用**核心字段**判断：Voltage / Temperature 这类名字太通用，
-    /// 日志里的温控、功耗段落也有，会把无关对象误判成电池记录，
-    /// 生成一堆只有温度、没有健康度的垃圾数据。
-    private static func hasBatteryKey(_ object: [String: Any]) -> Bool {
-        object.keys.contains { key in
-            coreBatteryKeys.contains { $0.caseInsensitiveCompare(key) == .orderedSame }
+    /// 只有「健康度 / 循环 / 容量」能证明这是电池数据。
+    /// Voltage / Temperature 太通用——日志里温控、功耗段落也有，会造成误判。
+    private static func hasCoreField(_ dict: [String: Any]) -> Bool {
+        pick(.health, in: dict) != nil || pick(.cycle, in: dict) != nil
+            || pick(.nominal, in: dict) != nil || pick(.design, in: dict) != nil
+    }
+
+    private static let batterySectionNames: Set<String> = [
+        "batteryhealth", "batteryhealthdata", "batterydata"
+    ]
+
+    private static func findBatterySection(in dict: [String: Any], depth: Int = 0) -> [String: Any]? {
+        for (key, value) in dict where batterySectionNames.contains(normalized(key)) {
+            if let nested = value as? [String: Any] { return nested }
         }
-    }
-
-    /// 只有这些字段能证明"这是电池数据"
-    private static var coreBatteryKeys: [String] {
-        healthKeys + cycleKeys + nominalKeys + designKeys
-    }
-
-    // MARK: - 字段定义
-
-    /// 已单独建模的字段（按语义分组，组内按优先级）
-    private static let healthKeys = ["MaximumCapacityPercent", "maximum_capacity_percent",
-                                     "SystemHealthPercent", "design_capacity_percent"]
-    private static let cycleKeys = ["CycleCount", "cycle_count",
-                                    "CycleCountTotal", "TotalCycleCount"]
-    private static let nominalKeys = ["NominalChargeCapacity", "nominal_charge_capacity",
-                                      "NominalChargeCapacityMah"]
-    private static let designKeys = ["DesignCapacity", "design_capacity",
-                                     "NominalChargeCapacityDesign", "DesignCapacityMah"]
-    private static let voltageKeys = ["Voltage", "BatteryVoltage", "battery_voltage"]
-    private static let tempKeys = ["Temperature", "BatteryTemperature", "battery_temperature"]
-
-    /// 所有已知键，用于判断某个对象是否是「电池对象」
-    private static var knownKeys: [String] {
-        healthKeys + cycleKeys + nominalKeys + designKeys + voltageKeys + tempKeys
-    }
-
-    /// 已从 batteryhealth 单独建模的键（小写集合），其余数值进 extraFields
-    private static var modeledKeys: Set<String> {
-        Set(knownKeys.map { $0.lowercased() })
-    }
-
-    // MARK: - 组装记录
-
-    private static func record(from object: [String: Any],
-                               fallbackDate: Date?,
-                               raw: String) -> AnalyticsRecord? {
-        guard let battery = batterySource(in: object) else { return nil }
-
-        let health = double(in: battery, healthKeys)
-        let cycles = double(in: battery, cycleKeys).map { Int($0) }
-        let nominal = double(in: battery, nominalKeys).map { Int($0) }
-        let design = double(in: battery, designKeys).map { Int($0) }
-        let voltage = double(in: battery, voltageKeys)
-        let temperature = double(in: battery, tempKeys)
-
-        let record = AnalyticsRecord(
-            date: extractDate(from: object) ?? fallbackDate ?? Date(),
-            systemHealthPercent: health,
-            cycleCount: cycles,
-            nominalChargeCapacity: nominal,
-            designCapacity: design,
-            voltage: voltage,
-            temperature: temperature,
-            rawSnippet: String(raw.prefix(4000)),
-            extraFields: extraNumericFields(in: battery))
-
-        return record.hasAnyMetric ? record : nil
-    }
-
-    /// 收集 batteryhealth 里未被单独建模的数值字段。
-    /// 系统写什么就存什么（AppleRawMaxCapacity、Qmax、WeightedRa、PresentDOD…），
-    /// 不同机型字段集合本就不同，不建模也不能丢。
-    private static func extraNumericFields(in battery: [String: Any]) -> [String: Double] {
-        var out: [String: Double] = [:]
-        for (key, value) in battery {
-            guard !modeledKeys.contains(key.lowercased()) else { continue }
-            if let v = numeric(value) { out[key] = v }
+        guard depth < 2 else { return nil }
+        for (_, value) in dict {
+            if let nested = value as? [String: Any],
+               let found = findBatterySection(in: nested, depth: depth + 1) { return found }
         }
-        return out
+        return nil
+    }
+
+    private static func deepFind(in dict: [String: Any], depth: Int) -> [String: Any]? {
+        guard depth < 3 else { return nil }
+        for (_, value) in dict {
+            guard let nested = value as? [String: Any] else { continue }
+            if hasCoreField(nested) { return nested }
+            if let found = deepFind(in: nested, depth: depth + 1) { return found }
+        }
+        return nil
     }
 
     // MARK: - 取值
 
-    /// 依次尝试给定键，命中即返回；支持忽略大小写匹配
-    private static func double(in dict: [String: Any], _ keys: [String]) -> Double? {
-        for key in keys {
-            if let v = value(of: key, in: dict) { return v }
-        }
-        return nil
-    }
-
-    private static func value(of key: String, in dict: [String: Any]) -> Double? {
-        if let v = numeric(dict[key]) { return v }
-        for (k, val) in dict where k.caseInsensitiveCompare(key) == .orderedSame {
-            if let v = numeric(val) { return v }
+    /// 按候选优先级取第一个「后缀匹配 + 数值合理」的键值
+    private static func pick(_ field: Field, in dict: [String: Any]) -> Pick? {
+        for candidate in candidates(for: field) {
+            for (key, value) in dict {
+                guard normalized(key).hasSuffix(candidate),
+                      let v = numeric(value),
+                      plausible(field, v) else { continue }
+                return Pick(key: key, value: v)
+            }
         }
         return nil
     }
@@ -304,6 +320,73 @@ enum AnalyticsLogParser {
             return Double(s.trimmingCharacters(in: .whitespaces))
         }
         return nil
+    }
+
+    // MARK: - 组装记录
+
+    private static func record(from source: [String: Any],
+                               date: Date,
+                               raw: String) -> AnalyticsRecord? {
+        let health = pick(.health, in: source)
+        let cycle = pick(.cycle, in: source)
+        let nominal = pick(.nominal, in: source)
+        let design = pick(.design, in: source)
+        let voltage = pick(.voltage, in: source)
+        let temperature = pick(.temperature, in: source)
+
+        // 记下每个字段实际取自哪个键，UI 上如实展示，便于核对
+        var sources: [String: String] = [:]
+        if let p = health { sources["health"] = p.key }
+        if let p = cycle { sources["cycle"] = p.key }
+        if let p = nominal { sources["nominal"] = p.key }
+        if let p = design { sources["design"] = p.key }
+        if let p = voltage { sources["voltage"] = p.key }
+        if let p = temperature { sources["temperature"] = p.key }
+
+        let record = AnalyticsRecord(
+            date: date,
+            systemHealthPercent: health?.value,
+            cycleCount: cycle.map { Int($0.value.rounded()) },
+            nominalChargeCapacity: nominal.map { Int($0.value.rounded()) },
+            designCapacity: design.map { Int($0.value.rounded()) },
+            voltage: voltage?.value,
+            temperature: temperature?.value,
+            rawSnippet: String(raw.prefix(4000)),
+            extraFields: extraFields(in: source),
+            fieldSources: sources)
+
+        return record.hasCoreMetric ? record : nil
+    }
+
+    /// 同一天多条记录时，字段更全的那条优先
+    private static func completeness(_ r: AnalyticsRecord) -> Int {
+        var score = 0
+        if r.systemHealthPercent != nil { score += 4 }
+        if r.cycleCount != nil { score += 4 }
+        if r.nominalChargeCapacity != nil { score += 3 }
+        if r.designCapacity != nil { score += 3 }
+        if r.voltage != nil { score += 1 }
+        if r.temperature != nil { score += 1 }
+        return score + min(r.extraFields.count, 10)
+    }
+
+    /// `message` 里未被单独建模的数值字段（AppleRawMaxCapacity、DailyMaxSoc…）。
+    /// 系统写什么就存什么，但不做解读。
+    private static func extraFields(in source: [String: Any], limit: Int = 30) -> [String: Double] {
+        var out: [String: Double] = [:]
+        for (key, value) in source {
+            guard let v = numeric(value), !isModeled(key) else { continue }
+            out[key] = v
+        }
+        guard out.count > limit else { return out }
+        let sorted = out.sorted { $0.key.localizedCaseInsensitiveCompare($1.key) == .orderedAscending }
+        return Dictionary(uniqueKeysWithValues: sorted.prefix(limit).map { ($0.key, $0.value) })
+    }
+
+    private static func isModeled(_ key: String) -> Bool {
+        let n = normalized(key)
+        let all = healthKeys + cycleKeys + nominalKeys + designKeys + voltageKeys + tempKeys
+        return all.contains { n.hasSuffix($0) }
     }
 
     // MARK: - 时间戳
@@ -323,148 +406,130 @@ enum AnalyticsLogParser {
         return nil
     }
 
-    // MARK: - 兜底：宽松正则扫描
+    // MARK: - 兜底：通用键值扫描
 
-    private enum MetricGroup { case health, cycle, nominal, design, voltage, temperature }
-
-    private struct FieldMatch {
-        let group: MetricGroup
+    private struct Pair {
+        let field: Field
         let key: String
         let value: Double
         let location: Int
         let length: Int
     }
 
-    private struct FallbackResult {
-        var records: [AnalyticsRecord] = []
-        var entriesFound: Int = 0
-    }
+    /// 不依赖 JSON 结构，直接在全文里扫「键 → 数值」。
+    /// 覆盖 JSON 的 `"key": 123` 与 plist 的 `<key>k</key><integer>123</integer>`。
+    private static func scanFallback(_ text: String, stamps: [Stamp]) -> [AnalyticsRecord] {
+        var pairs: [Pair] = []
+        pairs.append(contentsOf: scanPairs(
+            in: text,
+            pattern: "\"([A-Za-z0-9_.\\-]{3,80})\"\\s*:\\s*\"?(-?[0-9]+(?:\\.[0-9]+)?)\"?",
+            keyIndex: 1, valueIndex: 2))
+        pairs.append(contentsOf: scanPairs(
+            in: text,
+            pattern: "<key>([^<]{3,80})</key>\\s*<(?:integer|real)>(-?[0-9]+(?:\\.[0-9]+)?)</",
+            keyIndex: 1, valueIndex: 2))
 
-    /// JSON 结构化解析失败时的退路：按位置聚类，尽力把字段聚成一条条记录
-    private static func scanFallback(_ text: String) -> FallbackResult {
-        var out = FallbackResult()
+        guard !pairs.isEmpty else { return [] }
 
-        let matches = allFieldMatches(in: text)
-        let clusters = cluster(matches)
-        let stamps = timestampMatches(in: text)
-        out.entriesFound = stamps.isEmpty ? clusters.count : stamps.count
+        var out: [AnalyticsRecord] = []
+        for group in cluster(pairs) {
+            guard let start = group.map(\.location).min(),
+                  group.contains(where: { isCore($0.field) }),
+                  let date = nearestDate(before: start, in: stamps) ?? firstStamp(in: stamps)
+            else { continue }
 
-        for group in clusters {
-            guard let start = group.map(\.location).min() else { continue }
-            let date = nearestDate(before: start, in: stamps) ?? Date()
-            let health = pick(.health, from: group)
-            let cycles = pick(.cycle, from: group).map { Int($0) }
-            let nominal = pick(.nominal, from: group).map { Int($0) }
-            let design = pick(.design, from: group).map { Int($0) }
-            let voltage = pick(.voltage, from: group)
-            let temperature = pick(.temperature, from: group)
+            var sources: [String: String] = [:]
+            var extras: [String: Double] = [:]
+            var health: Double?, cycle: Double?, nominal: Double?, design: Double?
+            var voltage: Double?, temperature: Double?
+
+            for pair in group {
+                switch pair.field {
+                case .health:
+                    if health == nil { health = pair.value; sources["health"] = pair.key }
+                case .cycle:
+                    if cycle == nil { cycle = pair.value; sources["cycle"] = pair.key }
+                case .nominal:
+                    if nominal == nil { nominal = pair.value; sources["nominal"] = pair.key }
+                case .design:
+                    if design == nil { design = pair.value; sources["design"] = pair.key }
+                case .voltage:
+                    if voltage == nil { voltage = pair.value; sources["voltage"] = pair.key }
+                case .temperature:
+                    if temperature == nil { temperature = pair.value; sources["temperature"] = pair.key }
+                case .rawMax:
+                    extras[pair.key] = pair.value
+                }
+            }
 
             let record = AnalyticsRecord(
                 date: date,
                 systemHealthPercent: health,
-                cycleCount: cycles,
-                nominalChargeCapacity: nominal,
-                designCapacity: design,
+                cycleCount: cycle.map { Int($0.rounded()) },
+                nominalChargeCapacity: nominal.map { Int($0.rounded()) },
+                designCapacity: design.map { Int($0.rounded()) },
                 voltage: voltage,
                 temperature: temperature,
-                rawSnippet: snippet(around: group, in: text))
+                rawSnippet: snippet(around: group, in: text),
+                extraFields: extras,
+                fieldSources: sources)
 
-            if record.hasAnyMetric { out.records.append(record) }
+            if record.hasCoreMetric { out.append(record) }
         }
         return out
     }
 
-    private static func allFieldMatches(in text: String) -> [FieldMatch] {
-        let groups: [(MetricGroup, [String])] = [
-            (.health, healthKeys), (.cycle, cycleKeys), (.nominal, nominalKeys),
-            (.design, designKeys), (.voltage, voltageKeys), (.temperature, tempKeys)
-        ]
-        var out: [FieldMatch] = []
-        for (group, keys) in groups {
-            var found: [FieldMatch] = []
-            for key in keys {
-                let quoted = "\"\(key)\"\\s*:\\s*\"?(-?[0-9]+\\.?[0-9]*(?:[eE][-+]?[0-9]+)?)\"?"
-                found.append(contentsOf: scan(pattern: quoted, in: text, group: group, key: key))
-            }
-            if found.isEmpty {
-                for key in keys {
-                    let bare = "\\b\(key)\\b\\s*[:=]\\s*\"?(-?[0-9]+\\.?[0-9]*)\"?"
-                    found.append(contentsOf: scan(pattern: bare, in: text, group: group, key: key))
-                }
-            }
-            out.append(contentsOf: found)
+    private static func scanPairs(in text: String,
+                                  pattern: String,
+                                  keyIndex: Int,
+                                  valueIndex: Int) -> [Pair] {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
+        else { return [] }
+        let ns = text as NSString
+        var out: [Pair] = []
+        regex.enumerateMatches(in: text, options: [],
+                               range: NSRange(location: 0, length: ns.length)) { match, _, _ in
+            guard let match = match, match.numberOfRanges > max(keyIndex, valueIndex),
+                  let kr = Range(match.range(at: keyIndex), in: text),
+                  let vr = Range(match.range(at: valueIndex), in: text) else { return }
+            let key = String(text[kr])
+            guard let value = Double(text[vr]),
+                  let field = field(of: key),
+                  plausible(field, value) else { return }
+            out.append(Pair(field: field, key: key, value: value,
+                            location: match.range.location, length: match.range.length))
         }
         return out
     }
 
-    private static func scan(pattern: String,
-                             in text: String,
-                             group: MetricGroup,
-                             key: String) -> [FieldMatch] {
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
-            return []
-        }
-        let range = NSRange(location: 0, length: (text as NSString).length)
-        var out: [FieldMatch] = []
-        regex.enumerateMatches(in: text, options: [], range: range) { match, _, _ in
-            guard let match = match, match.numberOfRanges >= 2,
-                  let valueRange = Range(match.range(at: 1), in: text),
-                  let value = Double(text[valueRange]) else { return }
-            out.append(FieldMatch(group: group, key: key, value: value,
-                                  location: match.range.location, length: match.range.length))
-        }
-        return out
-    }
-
-    /// 切分信号：间隔过远，或同一键重复出现（一个 batteryhealth 里同键不会出现两次）
-    private static func cluster(_ matches: [FieldMatch], maxGap: Int = 2000) -> [[FieldMatch]] {
-        guard !matches.isEmpty else { return [] }
-        let sorted = matches.sorted { $0.location < $1.location }
-        var clusters: [[FieldMatch]] = []
-        var current: [FieldMatch] = [sorted[0]]
+    /// 切分信号：间隔过远，或同一键重复出现（一段电池数据里同键不会出现两次）
+    private static func cluster(_ pairs: [Pair], maxGap: Int = 2000) -> [[Pair]] {
+        guard !pairs.isEmpty else { return [] }
+        let sorted = pairs.sorted { $0.location < $1.location }
+        var clusters: [[Pair]] = []
+        var current: [Pair] = [sorted[0]]
         var last = sorted[0].location
 
-        for m in sorted.dropFirst() {
-            let tooFar = m.location - last > maxGap
-            let repeated = current.contains { $0.group == m.group && $0.key == m.key }
+        for p in sorted.dropFirst() {
+            let tooFar = p.location - last > maxGap
+            let repeated = current.contains { $0.key == p.key }
             if tooFar || repeated {
                 clusters.append(current)
                 current = []
             }
-            current.append(m)
-            last = m.location
+            current.append(p)
+            last = p.location
         }
         clusters.append(current)
         return clusters
     }
 
-    private static func pick(_ group: MetricGroup, from cluster: [FieldMatch]) -> Double? {
-        for key in keys(for: group) {
-            if let m = cluster.first(where: { $0.group == group && $0.key == key }) {
-                return m.value
-            }
-        }
-        return nil
-    }
-
-    private static func keys(for group: MetricGroup) -> [String] {
-        switch group {
-        case .health: return healthKeys
-        case .cycle: return cycleKeys
-        case .nominal: return nominalKeys
-        case .design: return designKeys
-        case .voltage: return voltageKeys
-        case .temperature: return tempKeys
-        }
-    }
-
-    private static func snippet(around cluster: [FieldMatch],
+    private static func snippet(around group: [Pair],
                                 in text: String,
                                 padding: Int = 600,
                                 limit: Int = 4000) -> String {
-        guard let start = cluster.map(\.location).min() else { return "" }
-        let ends = cluster.map { $0.location + $0.length }
-        guard let end = ends.max() else { return "" }
+        guard let start = group.map(\.location).min() else { return "" }
+        let end = group.map { $0.location + $0.length }.max() ?? start
         let ns = text as NSString
         let from = max(0, start - padding)
         let to = min(ns.length, end + padding)
@@ -472,6 +537,31 @@ enum AnalyticsLogParser {
         guard length > 0 else { return "" }
         return ns.substring(with: NSRange(location: from, length: length))
     }
+
+    // MARK: - 诊断
+
+    /// 解析不出任何记录时，把日志里"看起来跟电池有关"的键名报出来，
+    /// 便于直接补映射，不用猜。只在失败路径执行，不影响正常导入性能。
+    private static func collectCandidateKeys(from text: String) -> String {
+        guard let regex = try? NSRegularExpression(
+            pattern: "\"([A-Za-z0-9_.\\-]{0,60}(?:battery|capacity|cycle|charge|health)"
+                + "[A-Za-z0-9_.\\-]{0,40})\"\\s*:",
+            options: [.caseInsensitive]) else { return "" }
+        let ns = text as NSString
+        var seen: [String] = []
+        var set = Set<String>()
+        regex.enumerateMatches(in: text, options: [],
+                               range: NSRange(location: 0, length: ns.length)) { match, _, _ in
+            guard let match = match, match.numberOfRanges > 1,
+                  let r = Range(match.range(at: 1), in: text),
+                  seen.count < 30 else { return }
+            let key = String(text[r])
+            if set.insert(key).inserted { seen.append(key) }
+        }
+        return seen.joined(separator: "、")
+    }
+
+    // MARK: - 时间戳扫描
 
     private struct Stamp {
         let location: Int
@@ -485,12 +575,12 @@ enum AnalyticsLogParser {
         ]
         var out: [Stamp] = []
         for (i, pattern) in patterns.enumerated() {
-            guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
-                continue
-            }
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
+            else { continue }
             let groupIndex = (i == 1) ? 2 : 1
-            let range = NSRange(location: 0, length: (text as NSString).length)
-            regex.enumerateMatches(in: text, options: [], range: range) { match, _, _ in
+            let ns = text as NSString
+            regex.enumerateMatches(in: text, options: [],
+                                   range: NSRange(location: 0, length: ns.length)) { match, _, _ in
                 guard let match = match, match.numberOfRanges > groupIndex,
                       let r = Range(match.range(at: groupIndex), in: text) else { return }
                 out.append(Stamp(location: match.range.location, raw: String(text[r])))
@@ -499,23 +589,28 @@ enum AnalyticsLogParser {
         return out.sorted { $0.location < $1.location }
     }
 
+    /// 取该位置之前最近的一个时间戳；一个文件 = 一天，电池行就用表头那个时间
     private static func nearestDate(before location: Int, in stamps: [Stamp]) -> Date? {
         for s in stamps.reversed() where s.location <= location {
             if let d = parseDateString(s.raw) { return d }
         }
-        for s in stamps where s.location > location {
-            if let d = parseDateString(s.raw) { return d }
+        return nil
+    }
+
+    private static func firstStamp(in stamps: [Stamp]) -> Date? {
+        for s in stamps where parseDateString(s.raw) != nil {
+            return parseDateString(s.raw)
         }
         return nil
     }
 
     // MARK: - 时间解析
 
-    /// 支持 .ips 首行的 `2026-09-19 10:23:45.00 +0800`、ISO8601、`2026-09-19 10:23:45` 等。
+    /// 支持 .ips 首行的 `2026-09-24 08:00:08.00 +0800`、ISO8601 等。
     ///
-    /// ⚠️ 小数秒位数在不同 iOS 版本上是 1~6 位都有（实测 `08:00:08.00 +0800` 是两位），
+    /// ⚠️ 小数秒位数在不同 iOS 版本上是 1~6 位都有（实测 `08:00:08.00` 是两位），
     /// 只写死 `.SSSS` / `.SSSSSS` 会全部匹配失败 → 日期回退成"导入时刻"，
-    /// 所有记录挤在同一秒，去重后只剩 1 条，趋势图直接废掉。
+    /// 所有记录挤在同一天，趋势图直接废掉。
     private static let dateFormatters: [DateFormatter] = {
         let fractions = ["", ".S", ".SS", ".SSS", ".SSSS", ".SSSSS", ".SSSSSS"]
         let zones = ["Z", ""]
