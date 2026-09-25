@@ -172,11 +172,14 @@ struct BatteryHomeView: View {
                     accessory: valueText(String(format: "约 %.0f ℃", temp), color: .primary))
             }
             if let nominal = latestAnalytics?.nominalChargeCapacity {
-                let designText = latestAnalytics?.designCapacity.map { " / 出厂 \($0) mAh" } ?? ""
+                var text = "出厂 \(nominal) mAh"
+                if let raw = latestAnalytics?.rawMaxCapacity {
+                    text += " / 实时 \(raw) mAh"
+                }
                 infoRow(
                     icon: "bolt.big", tint: .teal,
                     title: "电池容量",
-                    accessory: valueText("当前 \(nominal) mAh" + designText, color: .primary))
+                    accessory: valueText(text, color: .primary))
             }
             if let date = latest?.date {
                 infoRow(
