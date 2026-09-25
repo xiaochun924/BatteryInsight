@@ -164,8 +164,6 @@ struct RecordDetailView: View {
             Section {
                 headerLabel("电池健康", icon: "heart.fill", tint: .green)
                 metricGrid()
-            } footer: {
-                Text("计算健康度 = 额定容量 ÷ 出厂容量（出厂容量按机型取官方标称），仅供参考。")
             }
 
             if unpluggedText != nil || screenOnText != nil
@@ -197,8 +195,6 @@ struct RecordDetailView: View {
                         }
                         .buttonStyle(.plain)
                     }
-                } footer: {
-                    Text("时长均取自分析日志：亮屏/唤醒为 intervalUsage 段 15 分钟区间求和，充电为 SystemChargingDuration 汇总，未插电为 UnpluggedDurationEnergyViewNew。")
                 }
             }
 
@@ -208,8 +204,7 @@ struct RecordDetailView: View {
                     row("额定容量", valueText: "\(v) mAh", tint: .green)
                 }
                 if let v = factoryCapacity {
-                    row("出厂容量", valueText: "\(v) mAh", tint: .green,
-                        caption: (DeviceBatterySpec.current?.marketingName ?? "") + " 默认容量")
+                    row("出厂容量", valueText: "\(v) mAh", tint: .green)
                 }
                 if nominalCapacity == nil && record.maximumCapacity == nil {
                     Text("该记录没有分析日志数据，只有手动录入的数值。")
