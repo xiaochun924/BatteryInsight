@@ -57,7 +57,7 @@ struct RecordDetailView: View {
                 }
             }
         }
-        .sensoryFeedback(.success, trigger: copiedText)
+        // 复制成功的反馈用图标变化（✓）表达；sensoryFeedback 需要 iOS 17，部署目标是 16
     }
 
     private var displayTab: Tab {
@@ -231,8 +231,8 @@ struct RecordDetailView: View {
     /// 分享文本：把该条记录的主要字段拼成一段可读文字
     private var shareText: String {
         var lines: [String] = [titleText]
-        if let h = record.maximumCapacity {
-            lines.append("系统健康度：\(String(format: "%.0f", h))%")
+        if record.maximumCapacity > 0 {
+            lines.append("系统健康度：\(String(format: "%.0f", record.maximumCapacity))%")
         }
         if let cycles = record.cycleCount ?? analytics?.cycleCount {
             lines.append("循环次数：\(cycles)")
