@@ -108,6 +108,12 @@ final class DataStore: ObservableObject {
         return "\(Int(day))-\(r.systemHealthPercent.map { String(format: "%.2f", $0) } ?? "-")-\(r.cycleCount ?? -1)"
     }
 
+    /// 整批替换（字段补齐 / 迁移用）：保持日期升序并落盘
+    func replaceAnalytics(_ records: [AnalyticsRecord]) {
+        analyticsRecords = records.sorted { $0.date < $1.date }
+        save()
+    }
+
     func deleteAnalyticsRecord(_ r: AnalyticsRecord) {
         analyticsRecords.removeAll { $0.id == r.id }
         save()
