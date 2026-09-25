@@ -1,4 +1,5 @@
 import SwiftUI
+import ObjectiveC.runtime
 import UniformTypeIdentifiers
 
 /// 基于 UIKit `UIDocumentPickerViewController` 的文件选择器。
@@ -9,70 +10,112 @@ import UniformTypeIdentifiers
 /// 面板也不关闭**，`onCompletion` 永远不回调；同样的代码在模拟器、iPad、
 /// Mac Catalyst 上完全正常。表现就是"选什么文件都无法完成"。
 /// 换成 UIKit 这套选择器后真机行为正常，因此全项目统一走这里。
-struct DocumentPicker: UIViewControllerRepresentable {
-    let contentTypes: [UTType]
-    var allowsMultipleSelection: Bool = false
-    let onPick: ([URL]) -> Void
-    var onCancel: (() -> Void)? = nil
+///
+/// 为什么是「直接 present」而不是「sheet 包一层 representable」：
+/// 之前用 `.sheet { DocumentPicker(...) }`，sheet 里装的是一个透明宿主 VC，
+/// 在 iPhone 上 sheet 卡片本身是白底 —— 于是点「导入」会先弹一张白卡，
+/// 宿主 `viewDidAppear` 后才在其上弹出真正的选择器，看起来就是
+/// "先跳白屏、再打开文件选择器"。现在改为**从当前最顶层 VC 直接 present
+/// 系统选择器**，没有中间层，白屏随之消失。
+enum DocumentPickerLauncher {
 
-    func makeUIViewController(context: Context) -> DocumentPickerHostController {
-        let controller = DocumentPickerHostController()
-        controller.contentTypes = contentTypes
-        controller.allowsMultipleSelection = allowsMultipleSelection
-        controller.onPick = onPick
-        controller.onCancel = onCancel
-        return controller
-    }
+    /// 从最顶层 ViewController 直接弹出系统文件选择器。
+    /// - `asCopy: true`：拷一份到本 App 临时目录再读，避免直接依赖源位置的访问权限
+    static func present(contentTypes: [UTType],
+                        allowsMultipleSelection: Bool,
+                        onPick: @escaping ([URL]) -> Void,
+                        onCancel: (() -> Void)? = nil) {
+        guard let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive }),
+            var top = scene.keyWindow?.rootViewController else {
+            onCancel?()
+            return
+        }
+        // 顺着 presented 链找最顶层，避免 "whose view is not in the window hierarchy"
+        while let presented = top.presentedViewController {
+            top = presented
+        }
 
-    func updateUIViewController(_ controller: DocumentPickerHostController, context: Context) {
-        controller.contentTypes = contentTypes
-        controller.allowsMultipleSelection = allowsMultipleSelection
-        controller.onPick = onPick
-        controller.onCancel = onCancel
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: contentTypes,
+                                                    asCopy: true)
+        picker.allowsMultipleSelection = allowsMultipleSelection
+        let delegate = PickerDelegate(onPick: onPick, onCancel: onCancel)
+        picker.delegate = delegate
+        // picker.delegate 是弱引用，delegate 对象必须有人持有；
+        // 挂在 picker 自身上，随 picker 一起释放
+        objc_setAssociatedObject(picker, &PickerDelegate.associatedKey, delegate,
+                                 .OBJC_ASSOCIATION_RETAIN)
+        top.present(picker, animated: true)
     }
 }
 
-/// 一个空白宿主 VC，只在 `viewDidAppear` 里把真正的选择器弹出来。
-///
-/// 之所以多包一层：SwiftUI 的 `.sheet` 内容一旦是 `UIDocumentPickerViewController`
-/// 本身，present 时机可能早于视图进窗口层级，会报
-/// "Attempt to present … whose view is not in the window hierarchy"。
-/// 放进 `viewDidAppear` 就没有这个时序问题。
-final class DocumentPickerHostController: UIViewController, UIDocumentPickerDelegate {
-    var contentTypes: [UTType] = [.data]
-    var allowsMultipleSelection = false
-    var onPick: (([URL]) -> Void)?
-    var onCancel: (() -> Void)?
+/// 选择器回调。选完 / 取消都先收起选择器再回调，
+/// 否则回调里立刻弹 alert 会被"present 已在进行中"顶掉。
+private final class PickerDelegate: NSObject, UIDocumentPickerDelegate {
+    static var associatedKey: UInt8 = 0
 
-    /// `viewDidAppear` 在 sheet 尺寸调整等场景会重复触发，只弹一次
-    private var didPresent = false
+    let onPick: ([URL]) -> Void
+    let onCancel: (() -> Void)?
 
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        // 选择器自己铺满屏幕，宿主保持透明，避免选择器关闭瞬间闪一下白底
-        view.backgroundColor = .clear
-    }
-
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        guard !didPresent else { return }
-        didPresent = true
-
-        // asCopy: true —— 拷一份到本 App 临时目录再读，避免直接依赖源位置的访问权限
-        let picker = UIDocumentPickerViewController(forOpeningContentTypes: contentTypes,
-                                                   asCopy: true)
-        picker.delegate = self
-        picker.allowsMultipleSelection = allowsMultipleSelection
-        picker.modalPresentationStyle = .fullScreen
-        present(picker, animated: true)
+    init(onPick: @escaping ([URL]) -> Void, onCancel: (() -> Void)?) {
+        self.onPick = onPick
+        self.onCancel = onCancel
     }
 
     func documentPicker(_ controller: UIDocumentPickerViewController,
                         didPickDocumentsAt urls: [URL]) {
-        onPick?(urls)
+        controller.dismiss(animated: true) { [onPick] in
+            onPick(urls)
+        }
     }
 
     func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-        onCancel?()
+        controller.dismiss(animated: true) { [onCancel] in
+            onCancel?()
+        }
+    }
+}
+
+// MARK: - SwiftUI 接入
+
+/// 用法：`.documentPicker(isPresented: $showing, contentTypes: ...) { urls in ... }`
+/// 把 `isPresented` 置 true 即弹出选择器；选完 / 取消都会自动把它置回 false。
+struct DocumentPickerModifier: ViewModifier {
+    @Binding var isPresented: Bool
+    let contentTypes: [UTType]
+    var allowsMultipleSelection = false
+    let onPick: ([URL]) -> Void
+    var onCancel: (() -> Void)? = nil
+
+    func body(content: Content) -> some View {
+        // 单参数版 onChange：部署目标 iOS 16，双参数版要 iOS 17
+        content.onChange(of: isPresented) { presented in
+            guard presented else { return }
+            DocumentPickerLauncher.present(
+                contentTypes: contentTypes,
+                allowsMultipleSelection: allowsMultipleSelection
+            ) { urls in
+                isPresented = false
+                onPick(urls)
+            } onCancel: {
+                isPresented = false
+                onCancel?()
+            }
+        }
+    }
+}
+
+extension View {
+    func documentPicker(isPresented: Binding<Bool>,
+                        contentTypes: [UTType],
+                        allowsMultipleSelection: Bool = false,
+                        onPick: @escaping ([URL]) -> Void,
+                        onCancel: (() -> Void)? = nil) -> some View {
+        modifier(DocumentPickerModifier(isPresented: isPresented,
+                                        contentTypes: contentTypes,
+                                        allowsMultipleSelection: allowsMultipleSelection,
+                                        onPick: onPick,
+                                        onCancel: onCancel))
     }
 }
