@@ -15,6 +15,9 @@ struct BatteryHomeView: View {
     @State private var showingAdd = false
     @State private var showingAnalytics = false
     @State private var showingTips = false
+    /// 「导入日志」一步到位：直接弹系统文件管理器，不再经过中间页
+    @State private var showingFileImporter = false
+    @State private var showingResult = false
     /// 电量趋势的时间范围
     @State private var range: TrendRange = .day
 
@@ -92,6 +95,9 @@ struct BatteryHomeView: View {
                     Button { showingAdd = true } label: {
                         Label("手动添加记录", systemImage: "plus")
                     }
+                    Button { showingAnalytics = true } label: {
+                        Label("日志分析", systemImage: "doc.text.magnifyingglass")
+                    }
                     Button { showingTips = true } label: {
                         Label("优化建议", systemImage: "lightbulb.fill")
                     }
@@ -106,14 +112,28 @@ struct BatteryHomeView: View {
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Button { showingAnalytics = true } label: {
-                    Label("导入日志", systemImage: "square.and.arrow.down")
+                Button { showingFileImporter = true } label: {
+                    Label("导入", systemImage: "square.and.arrow.down")
                 }
+                .disabled(vm.isImporting)
             }
         }
         .sheet(isPresented: $showingAdd) { addSheet }
         .sheet(isPresented: $showingAnalytics) { AnalyticsView() }
         .sheet(isPresented: $showingTips) { TipsView() }
+        .sheet(isPresented: $showingFileImporter) {
+            AnalyticsFileImporterSheet(isPresented: $showingFileImporter) {
+                showingResult = true
+            }
+        }
+        .alert("导入结果", isPresented: $showingResult) {
+            Button("好", role: .cancel) { }
+        } message: {
+            Text(vm.importMessage ?? "")
+        }
+        .overlay {
+            if vm.isImporting { ImportingOverlay(stage: vm.importStage) }
+        }
     }
 
     // MARK: - 统计卡片
@@ -291,11 +311,12 @@ struct BatteryHomeView: View {
                      + "导出后导入本 App，即可得到系统原生数值。")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-                Button { showingAnalytics = true } label: {
+                Button { showingFileImporter = true } label: {
                     Label("导入分析日志", systemImage: "square.and.arrow.down")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
+                .disabled(vm.isImporting)
             }
             .padding(.vertical, 4)
         }
@@ -366,11 +387,12 @@ struct BatteryHomeView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
             VStack(spacing: 10) {
-                Button { showingAnalytics = true } label: {
+                Button { showingFileImporter = true } label: {
                     Label("从分析日志导入", systemImage: "square.and.arrow.down")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
+                .disabled(vm.isImporting)
 
                 Button { showingAdd = true } label: {
                     Label("手动添加记录", systemImage: "plus")
@@ -382,5 +404,31 @@ struct BatteryHomeView: View {
         }
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// MARK: - 解析中遮罩
+
+/// 解析几十 MB 的日志要几秒。之前没有这个反馈，界面就是一片黑屏，
+/// 看起来跟"点了没反应 / 卡死"一样。
+private struct ImportingOverlay: View {
+    let stage: String?
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.2).ignoresSafeArea()
+            VStack(spacing: 12) {
+                ProgressView()
+                    .controlSize(.large)
+                Text(stage ?? "正在解析…")
+                    .font(.subheadline)
+                Text("日志较大时需要几秒，请稍候")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(24)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+        }
+        .allowsHitTesting(true)
     }
 }
