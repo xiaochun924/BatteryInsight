@@ -195,7 +195,7 @@ struct BatteryHomeView: View {
             }
             if let text = capacityText {
                 infoRow(
-                    icon: "bolt.big", tint: .teal,
+                    icon: "bolt.batteryblock", tint: .teal,
                     title: "电池容量",
                     accessory: valueText(text, color: .primary))
             }
@@ -232,10 +232,10 @@ struct BatteryHomeView: View {
             .lineLimit(1)
     }
 
-    /// 电池容量文案：出厂 + 实时拼接（移出 ViewBuilder，避免 Void 表达式无法转成 View）
+    /// 电池容量文案：额定容量 + 实时容量拼接（移出 ViewBuilder，避免 Void 表达式无法转成 View）
     private var capacityText: String? {
         guard let nominal = latestAnalytics?.nominalChargeCapacity else { return nil }
-        var text = "出厂 \(nominal) mAh"
+        var text = "\(nominal) mAh"
         if let raw = latestAnalytics?.rawMaxCapacity {
             text += " / 实时 \(raw) mAh"
         }

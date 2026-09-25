@@ -95,7 +95,8 @@ enum AnalyticsLogParser {
     }
 
     /// 已验证的精确键（归一化后按后缀匹配，键名来自真实日志样本，不做臆测）：
-    /// 温度原始值 0.1℃、电压 mV、电流 mA、运行时间 0.1h、更新时间 Unix 秒。
+    /// min/max 温度原始值 0.1℃、平均温度已是 1℃、电压 mV、电流 mA、
+    /// 运行时间单位小时（h）、更新时间 Unix 秒。
     private static let exactKeys: [Field: [String]] = [
         .minFCC: ["minimumfcc"],
         .maxFCC: ["maximumfcc"],
@@ -479,7 +480,9 @@ enum AnalyticsLogParser {
         if let p = pickExact(.rawMax, in: source) { sources["rawMax"] = p.key }
 
         // 单位换算：电压 mV → V；电流 mA → A（放电为负值，取绝对值）；
-        // 温度 0.1℃ → ℃；运行时间 0.1h → h；更新时间 Unix 秒 → Date
+        // min/max 温度 0.1℃ → ℃（平均温度已是 ℃，不再换算）；
+        // 运行时间单位即小时（TotalOperatingTime 实测为 h，非 0.1h）；
+        // 更新时间 Unix 秒 → Date
         let record = AnalyticsRecord(
             date: date,
             systemHealthPercent: health?.value,
@@ -500,7 +503,7 @@ enum AnalyticsLogParser {
             maxTemperature: exact(.maxTemp).map { $0 / 10 },
             dailyMinSoc: exact(.dailyMinSoc).map { Int($0.rounded()) },
             dailyMaxSoc: exact(.dailyMaxSoc).map { Int($0.rounded()) },
-            totalOperatingHours: exact(.operatingTime).map { $0 / 10 },
+            totalOperatingHours: exact(.operatingTime),
             lastUpdateTime: exact(.updateTime).map { Date(timeIntervalSince1970: $0) },
             firstUseDate: exact(.firstUse).map { Date(timeIntervalSince1970: $0) },
             batterySerialChanged: boolExact(.batterySerialChanged, in: source),
