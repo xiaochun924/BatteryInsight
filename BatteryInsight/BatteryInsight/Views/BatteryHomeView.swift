@@ -98,12 +98,6 @@ struct BatteryHomeView: View {
                     Button { showingTips = true } label: {
                         Label("优化建议", systemImage: "lightbulb.fill")
                     }
-                    Button { vm.loadDemoData() } label: {
-                        Label("载入演示数据", systemImage: "sparkles")
-                    }
-                    Button(role: .destructive) { vm.clearAll() } label: {
-                        Label("清空全部数据", systemImage: "trash")
-                    }
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
@@ -120,8 +114,15 @@ struct BatteryHomeView: View {
         .sheet(isPresented: $showingAdd) { addSheet }
         .sheet(isPresented: $showingAnalytics) { AnalyticsView() }
         .sheet(isPresented: $showingTips) { TipsView() }
-        .sheet(isPresented: $showingFileImporter) {
-            AnalyticsFileImporterSheet(isPresented: $showingFileImporter) {
+        // 直接从最顶层 VC 弹系统选择器，不再包一层 sheet——
+        // 中间层白卡就是"点导入先跳白屏"的来源
+        .documentPicker(
+            isPresented: $showingFileImporter,
+            contentTypes: AnalyticsFileImporter.allowedContentTypes,
+            allowsMultipleSelection: true
+        ) { urls in
+            Task {
+                _ = await vm.importAnalyticsFiles(urls)
                 showingResult = true
             }
         }
