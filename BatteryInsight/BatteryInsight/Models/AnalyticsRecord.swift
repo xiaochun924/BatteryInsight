@@ -43,6 +43,13 @@ struct AnalyticsRecord: Codable, Identifiable, Equatable, Sendable {
     var totalOperatingHours: Double?
     /// 记录更新时间 —— UpdateTime（Unix 秒）
     var lastUpdateTime: Date?
+    /// 首次使用日期 —— DOFU（Date Of First Use，Unix 秒）。
+    /// 对 iPhone 15 及更新机型，系统在日志里写入电池首次启用时间；
+    /// 旧机型日志无此键时为空。
+    var firstUseDate: Date?
+    /// 电池序列是否变更过 —— BatterySerialChanged（true 表示检测到非原装 / 更换）。
+    /// 判断「电池来源」是否原装的依据；日志为 null 或 false 时视为原装。
+    var batterySerialChanged: Bool?
     /// 电池电压（V）
     let voltage: Double?
     /// 电池温度（℃）
@@ -83,6 +90,8 @@ struct AnalyticsRecord: Codable, Identifiable, Equatable, Sendable {
          dailyMaxSoc: Int? = nil,
          totalOperatingHours: Double? = nil,
          lastUpdateTime: Date? = nil,
+         firstUseDate: Date? = nil,
+         batterySerialChanged: Bool? = nil,
          voltage: Double? = nil,
          temperature: Double? = nil,
          rawSnippet: String = "",
@@ -110,6 +119,8 @@ struct AnalyticsRecord: Codable, Identifiable, Equatable, Sendable {
         self.dailyMaxSoc = dailyMaxSoc
         self.totalOperatingHours = totalOperatingHours
         self.lastUpdateTime = lastUpdateTime
+        self.firstUseDate = firstUseDate
+        self.batterySerialChanged = batterySerialChanged
         self.voltage = voltage
         self.temperature = temperature
         self.rawSnippet = rawSnippet
@@ -126,7 +137,8 @@ struct AnalyticsRecord: Codable, Identifiable, Equatable, Sendable {
              minPackVoltage, maxPackVoltage, maxChargeCurrent, maxDischargeCurrent,
              minTemperature, maxTemperature, dailyMinSoc, dailyMaxSoc,
              totalOperatingHours, lastUpdateTime,
-             voltage, temperature, rawSnippet, extraFields, fieldSources
+             voltage, temperature, rawSnippet, extraFields, fieldSources, firstUseDate,
+             batterySerialChanged
     }
 
     init(from decoder: Decoder) throws {
@@ -153,6 +165,8 @@ struct AnalyticsRecord: Codable, Identifiable, Equatable, Sendable {
         dailyMaxSoc = try? c.decode(Int.self, forKey: .dailyMaxSoc)
         totalOperatingHours = try? c.decode(Double.self, forKey: .totalOperatingHours)
         lastUpdateTime = try? c.decode(Date.self, forKey: .lastUpdateTime)
+        firstUseDate = try? c.decode(Date.self, forKey: .firstUseDate)
+        batterySerialChanged = try? c.decode(Bool.self, forKey: .batterySerialChanged)
         voltage = try? c.decode(Double.self, forKey: .voltage)
         temperature = try? c.decode(Double.self, forKey: .temperature)
         rawSnippet = (try? c.decode(String.self, forKey: .rawSnippet)) ?? ""
