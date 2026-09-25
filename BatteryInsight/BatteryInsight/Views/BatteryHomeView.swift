@@ -5,7 +5,8 @@ import Charts
 ///
 /// 1. **设备信息卡**：一行一条（机型/系统、健康度、循环、温度、容量、最近检测）
 /// 2. **趋势图表卡**：「健康 / 容量」切换 + 衰减速率 + 折线图（逐点数值标签）
-///    + 底部摘要行（预计多久降到 80%）
+///    + Y 轴随数据自适应（健康度 100% 上下也能完整显示，参考主流电池工具布局）
+///    + 底部摘要行（预计多久降到 80% + 详情入口）
 /// 3. **检测记录**：每天一张卡片（健康 %、循环次数、评级徽章、日期）
 ///
 /// 原「电量趋势 / 趋势统计」（电量 % 曲线及其统计）已按需求删除——
@@ -259,14 +260,15 @@ struct BatteryHomeView: View {
                             .font(.headline)
                     }
 
-                    Spacer()
-
+                    // 对应截图布局：衰减速率紧跟分段（「↘ -0.10%」红色向下箭头）
                     if metric == .health, let rate = BatteryAnalytics.healthDeclinePerMonth(vm.healthRecords) {
-                        // 对应截图的「↘ -0.06%」：衰减为正数，用红色向下箭头
                         Label(String(format: "%.2f", rate), systemImage: "arrow.down.right")
                             .font(.subheadline.bold())
                             .foregroundStyle(.red)
+                            .padding(.leading, 10)
                     }
+
+                    Spacer()
 
                     Button { showingAnalytics = true } label: {
                         Label("详细分析", systemImage: "arrow.up.right")
@@ -280,7 +282,7 @@ struct BatteryHomeView: View {
 
                 trendChart
 
-                // 底部摘要行（对应截图的「⚖️ 正常老化 · 约 2 年 9 个月到 80%」）
+                // 底部摘要行（对应截图：「⚖️ 正常老化 · 约 2 年 9 个月到 80%」+ 右侧「详情」入口）
                 if let summary = summaryText {
                     HStack(spacing: 6) {
                         Image(systemName: "scalemass")
@@ -290,6 +292,14 @@ struct BatteryHomeView: View {
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                         Spacer()
+                        Button { showingAnalytics = true } label: {
+                            Text("详情")
+                                .font(.footnote.bold())
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(.quaternary, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
                     }
                     .padding(.top, 2)
                 }
@@ -330,13 +340,8 @@ struct BatteryHomeView: View {
                     }
                 }
             }
-            // 健康度视图下画出 80% 更换阈值参考线
-            if metric == .health {
-                RuleMark(y: .value("更换阈值", 80.0))
-                    .foregroundStyle(.red.opacity(0.6))
-                    .lineStyle(StrokeStyle(dash: [4, 3]))
-            }
         }
+        // Y 轴随数据自适应（截图布局）：健康度 100% 上下也能完整显示
         .chartYScale(domain: yDomain(for: points))
         .chartXAxis {
             AxisMarks(values: .automatic(desiredCount: 4))
@@ -348,14 +353,22 @@ struct BatteryHomeView: View {
         metric == .health ? String(format: "%.1f", value) : "\(Int(value))"
     }
 
-    /// Y 轴范围：健康度固定 70~100；容量按数据自适应并留出余量（也给标签留空间）。
+    /// Y 轴范围：健康度与容量都按数据自适应，并留出上下余量（也给标签留空间）。
+    ///
+    /// 健康度常见 100% 上下（出厂容量是标称值，实际电芯存在正公差），
+    /// 不再固定 70~100——否则 101.x 的数据点会被挤出图表看不见。
+    /// 对齐截图布局：数据 101.60~101.78 时，Y 轴显示 100~103。
     /// 注意局部变量不能叫 min/max——会遮蔽同名系统函数导致编译错误
     private func yDomain(for points: [(date: Date, value: Double)]) -> ClosedRange<Double> {
-        if metric == .health { return 70...100 }
-        guard let lo = points.map(\.value).min(),
-              let hi = points.map(\.value).max() else { return 0...100 }
-        let pad = Swift.max(50, (hi - lo) * 0.3)
-        return Swift.max(0, lo - pad)...(hi + pad)
+        guard let lo0 = points.map(\.value).min(),
+              let hi0 = points.map(\.value).max() else { return 95...105 }
+        let lo = floor(lo0 - 1)
+        let hi = ceil(hi0 + 1)
+        // 单点或数值相同：至少撑开 2 个单位，避免折线贴成一条线
+        if hi - lo < 2 {
+            return floor(lo0 - 2)...ceil(hi0 + 2)
+        }
+        return lo...hi
     }
 
     /// 底部摘要：按当前衰减速率估算降到 80% 的时间
