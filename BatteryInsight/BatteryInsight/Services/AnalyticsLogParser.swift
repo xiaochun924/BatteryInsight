@@ -140,7 +140,7 @@ enum AnalyticsLogParser {
              .minQmax, .maxQmax, .qmaxCell0: return v >= 100 && v <= 20000
         case .minPackV, .maxPackV, .voltage: return v >= 2000 && v <= 6000
         case .chargeCurrent, .dischargeCurrent: return abs(v) >= 10 && abs(v) <= 20000
-        case .minTemp, .maxTemp: return v >= -500 && v <= 1500
+        case .minTemp, .maxTemp, .avgTemp: return v >= -500 && v <= 1500
         case .temperature: return v >= -50 && v <= 150
         case .operatingTime: return v >= 0 && v <= 100_000_000
         case .updateTime: return v >= 1_000_000_000 && v <= 5_000_000_000
