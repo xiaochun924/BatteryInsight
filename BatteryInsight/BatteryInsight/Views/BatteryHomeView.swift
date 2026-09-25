@@ -348,13 +348,24 @@ struct BatteryHomeView: View {
     private var recordsSection: some View {
         Section("检测记录（\(sortedHealth.count) 条）") {
             ForEach(reversedHealth) { record in
-                recordCard(record)
+                // 点任意一条记录 → push 详情页（电池数据 / 其他数据 分段）
+                NavigationLink {
+                    RecordDetailView(record: record, analytics: analyticsFor(record))
+                } label: {
+                    recordCard(record)
+                }
             }
             .onDelete { offsets in
                 offsets.map { reversedHealth[$0] }
                     .forEach { vm.deleteHealth($0) }
             }
         }
+    }
+
+    /// 取该条手动记录同一天的分析日志（详情页的数据源之一）
+    private func analyticsFor(_ record: HealthRecord) -> AnalyticsRecord? {
+        let day = Calendar.current.startOfDay(for: record.date)
+        return sortedAnalytics.first { Calendar.current.startOfDay(for: $0.date) == day }
     }
 
     private func recordCard(_ record: HealthRecord) -> some View {
