@@ -1,90 +1,87 @@
 import SwiftUI
 import Charts
 
-/// 唯一的主页面：电池健康 + 电量趋势，一屏滚动看完。
+/// 唯一的主页面，布局参考 iOS 电池健康类 App 的通用样式：
 ///
-/// 原来是「概览 / 趋势 / 充电 / 健康」四个 Tab：
-/// - **概览**：展示的是当前电量、耗电速率这类实时指标，与「电池健康度」无关
-/// - **充电**：依赖 App 在前台时捕捉充电状态翻转，iOS 后台一挂起就漏记，数据不完整
+/// 1. **设备信息卡**：一行一条（机型/系统、健康度、循环、温度、容量、最近检测）
+/// 2. **趋势图表卡**：「健康 / 容量」切换 + 衰减速率 + 折线图（逐点数值标签）
+///    + 底部摘要行（预计多久降到 80%）
+/// 3. **检测记录**：每天一张卡片（健康 %、循环次数、评级徽章、日期）
 ///
-/// 这两页已删除（连同 DashboardView / ChargingView），
-/// 「健康」与「趋势」合并到这里，不再需要 TabView。
+/// 原「电量趋势 / 趋势统计」（电量 % 曲线及其统计）已按需求删除——
+/// 电量起伏与健康度无关，真正有价值的是容量随时间的衰减。
 struct BatteryHomeView: View {
     @EnvironmentObject private var vm: BatteryViewModel
 
     @State private var showingAdd = false
     @State private var showingAnalytics = false
     @State private var showingTips = false
-    /// 「导入日志」一步到位：直接弹系统文件管理器，不再经过中间页
+    /// 「导入」一步到位：直接弹系统文件管理器，不再经过中间页
     @State private var showingFileImporter = false
     @State private var showingResult = false
-    /// 电量趋势的时间范围
-    @State private var range: TrendRange = .day
+    /// 图表显示哪种指标。容量数据只有导入分析日志后才有，届时才出现「容量」段
+    @State private var metric: ChartMetric = .health
 
-    enum TrendRange: String, CaseIterable, Identifiable {
-        case day = "24 小时"
-        case week = "7 天"
-        case all = "全部"
+    enum ChartMetric: String, CaseIterable, Identifiable {
+        case health = "健康"
+        case capacity = "容量"
         var id: String { rawValue }
-
-        var hours: Double? {
-            switch self {
-            case .day:  return 24
-            case .week: return 24 * 7
-            case .all:  return nil
-            }
-        }
     }
+
+    // MARK: - 数据
 
     private var sortedHealth: [HealthRecord] {
         vm.healthRecords.sorted { $0.date < $1.date }
     }
 
-    /// 列表按时间倒序展示。显式标注为数组：`reversed()` 返回的是
-    /// ReversedCollection，下标不是 Int，不能直接用于 onDelete 的 IndexSet 取值
+    /// 列表按时间倒序展示。显式转成数组：`reversed()` 的下标不是 Int，
+    /// 不能直接用于 onDelete 的 IndexSet 取值
     private var reversedHealth: [HealthRecord] {
-        sortedHealth.reversed()
+        Array(sortedHealth.reversed())
     }
 
-    private var latest: HealthRecord? {
-        BatteryAnalytics.latestHealth(vm.healthRecords)
+    private var latest: HealthRecord? { sortedHealth.last }
+
+    private var sortedAnalytics: [AnalyticsRecord] {
+        vm.analyticsRecords.sorted { $0.date < $1.date }
     }
 
-    private var filteredSamples: [BatterySample] {
-        let sorted = vm.samples.sorted { $0.date < $1.date }
-        guard let hours = range.hours else { return sorted }
-        let cutoff = Date().addingTimeInterval(-hours * 3600)
-        return sorted.filter { $0.date >= cutoff }
+    private var latestAnalytics: AnalyticsRecord? { sortedAnalytics.last }
+
+    /// 是否有实际容量数据（决定图表卡要不要显示「容量」切换段）
+    private var hasCapacityData: Bool {
+        sortedAnalytics.contains { $0.nominalChargeCapacity != nil }
+    }
+
+    /// 图表数据点。同一天可能有多条记录（手动连加、重复导入），
+    /// 按天去重（保留当天最后一条），避免 ForEach 出现重复 ID
+    private var chartPoints: [(date: Date, value: Double)] {
+        let raw: [(Date, Double)]
+        switch metric {
+        case .health:
+            raw = sortedHealth.map { ($0.date, $0.maximumCapacity) }
+        case .capacity:
+            raw = sortedAnalytics.compactMap { record in
+                record.nominalChargeCapacity.map { (record.date, Double($0)) }
+            }
+        }
+        var byDay: [Date: (date: Date, value: Double)] = [:]
+        for point in raw {
+            let day = Calendar.current.startOfDay(for: point.0)
+            byDay[day] = (point.0, point.1)
+        }
+        return byDay.values.sorted { $0.date < $1.date }
     }
 
     var body: some View {
         Group {
-            if sortedHealth.isEmpty && filteredSamples.isEmpty {
+            if sortedHealth.isEmpty && sortedAnalytics.isEmpty {
                 emptyState
             } else {
                 List {
-                    if sortedHealth.isEmpty {
-                        importHint
-                    }
-
-                    if !sortedHealth.isEmpty {
-                        Section("当前状态") { statsGrid }
-                        Section("容量衰减曲线") { healthChart }
-                        Section("健康记录（\(sortedHealth.count) 条）") {
-                            ForEach(reversedHealth) { record in
-                                healthRow(record)
-                            }
-                            .onDelete { offsets in
-                                offsets.map { reversedHealth[$0] }
-                                    .forEach { vm.deleteHealth($0) }
-                            }
-                        }
-                    }
-
-                    if !vm.samples.isEmpty {
-                        Section("电量趋势") { levelChart }
-                        Section("趋势统计") { sampleStats }
-                    }
+                    deviceCard
+                    trendCard
+                    recordsSection
                 }
             }
         }
@@ -112,9 +109,11 @@ struct BatteryHomeView: View {
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
+                // 对应截图右上角的「+ 分析」胶囊按钮
                 Button { showingFileImporter = true } label: {
-                    Label("导入", systemImage: "square.and.arrow.down")
+                    Label("分析", systemImage: "plus")
                 }
+                .buttonStyle(.borderedProminent)
                 .disabled(vm.isImporting)
             }
         }
@@ -136,190 +135,292 @@ struct BatteryHomeView: View {
         }
     }
 
-    // MARK: - 统计卡片
+    // MARK: - 设备信息卡（参考截图第一张卡片：一行一条）
 
-    private var statsGrid: some View {
-        let columns = [GridItem(.flexible()), GridItem(.flexible())]
-        return LazyVGrid(columns: columns, spacing: 12) {
-            MetricCard(title: "最大容量", value: capacityValueText, unit: "%",
-                       icon: "battery.100", tint: healthTint)
-            MetricCard(title: "衰减速率", value: declineText, unit: "%/月",
-                       icon: "arrow.down.right", tint: .orange)
-            MetricCard(title: "降至 80%", value: monthsText, unit: "个月",
-                       icon: "calendar", tint: .red)
-            MetricCard(title: "循环次数", value: cyclesValueText, unit: "次",
-                       icon: "arrow.2.circlepath", tint: .blue)
-        }
-        .padding(.vertical, 4)
-    }
-
-    private var capacityValueText: String {
-        guard let record = latest else { return "--" }
-        return String(format: "%.0f", record.maximumCapacity)
-    }
-
-    private var cyclesValueText: String {
-        guard let cycles = latest?.cycleCount else { return "--" }
-        return "\(cycles)"
-    }
-
-    private var declineText: String {
-        guard let rate = BatteryAnalytics.healthDeclinePerMonth(vm.healthRecords) else { return "--" }
-        return String(format: "%.2f", rate)
-    }
-
-    private var monthsText: String {
-        guard let months = BatteryAnalytics.monthsUntil80(records: vm.healthRecords) else { return "--" }
-        return String(format: "%.0f", months)
-    }
-
-    private var healthTint: Color {
-        guard let record = latest else { return .gray }
-        if record.maximumCapacity < 80 { return .red }
-        if record.maximumCapacity < 85 { return .orange }
-        return .green
-    }
-
-    private func healthRow(_ record: HealthRecord) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(String(format: "%.0f%%", record.maximumCapacity)).font(.headline)
-                Text(record.dateText).font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer()
-            if let cycles = record.cycleCount {
-                Text("\(cycles) 次循环").font(.caption).foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    // MARK: - 容量衰减曲线
-
-    private var healthChart: some View {
-        Chart {
-            ForEach(sortedHealth) { record in
-                LineMark(
-                    x: .value("日期", record.date),
-                    y: .value("最大容量", record.maximumCapacity)
-                )
-                .foregroundStyle(.purple)
-                .interpolationMethod(.monotone)
-
-                PointMark(
-                    x: .value("日期", record.date),
-                    y: .value("最大容量", record.maximumCapacity)
-                )
-                .foregroundStyle(.purple)
-            }
-            // Apple 建议的 80% 更换阈值
-            RuleMark(y: .value("更换阈值", 80.0))
-                .foregroundStyle(.red.opacity(0.7))
-                .lineStyle(StrokeStyle(dash: [4, 3]))
-        }
-        .chartYScale(domain: 70...100)
-        .chartYAxis {
-            AxisMarks(position: .leading, values: [70, 80, 90, 100])
-        }
-        .frame(height: 200)
-    }
-
-    // MARK: - 电量趋势
-
-    private var levelChart: some View {
-        VStack(spacing: 12) {
-            Picker("时间范围", selection: $range) {
-                ForEach(TrendRange.allCases) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented)
-
-            Chart(filteredSamples) { sample in
-                let color: Color = sample.state.isCharging ? .green : .blue
-                LineMark(
-                    x: .value("时间", sample.date),
-                    y: .value("电量", sample.percent)
-                )
-                .foregroundStyle(color)
-                .interpolationMethod(.monotone)
-
-                PointMark(
-                    x: .value("时间", sample.date),
-                    y: .value("电量", sample.percent)
-                )
-                .foregroundStyle(color)
-                .symbolSize(20)
-            }
-            .chartYScale(domain: 0...100)
-            .chartXAxis {
-                AxisMarks(values: .automatic(desiredCount: 5))
-            }
-            .chartYAxis {
-                AxisMarks(position: .leading, values: [0, 25, 50, 75, 100])
-            }
-            .frame(height: 220)
-
-            HStack(spacing: 18) {
-                Label("放电", systemImage: "circle.fill").foregroundStyle(.blue)
-                Label("充电", systemImage: "circle.fill").foregroundStyle(.green)
-            }
-            .font(.caption)
-        }
-    }
-
-    private var sampleStats: some View {
-        let columns = [GridItem(.flexible()), GridItem(.flexible())]
-        return LazyVGrid(columns: columns, spacing: 12) {
-            MetricCard(title: "采样点", value: "\(filteredSamples.count)", unit: "个",
-                       icon: "number", tint: .gray)
-            MetricCard(title: "平均电量", value: averageText, unit: "%",
-                       icon: "chart.bar", tint: .blue)
-            MetricCard(title: "最低电量", value: minimumText, unit: "%",
-                       icon: "arrow.down", tint: .red)
-            MetricCard(title: "最高电量", value: maximumText, unit: "%",
-                       icon: "arrow.up", tint: .green)
-        }
-        .padding(.vertical, 4)
-    }
-
-    private var averageText: String {
-        guard !filteredSamples.isEmpty else { return "--" }
-        let avg = filteredSamples.map { $0.percent }.reduce(0, +) / Double(filteredSamples.count)
-        return String(format: "%.0f", avg)
-    }
-
-    private var minimumText: String {
-        guard let min = filteredSamples.map({ $0.percent }).min() else { return "--" }
-        return String(format: "%.0f", min)
-    }
-
-    private var maximumText: String {
-        guard let max = filteredSamples.map({ $0.percent }).max() else { return "--" }
-        return String(format: "%.0f", max)
-    }
-
-    // MARK: - 导入引导
-
-    /// 还没导入过系统分析日志时，在顶部给一个明确入口。
-    /// 「最大容量 / 循环次数」iOS 不开放给第三方 App，只能从分析日志里读。
-    private var importHint: some View {
+    private var deviceCard: some View {
         Section {
-            VStack(alignment: .leading, spacing: 8) {
-                Label("从系统日志读取真实健康度", systemImage: "doc.text.magnifyingglass")
-                    .font(.subheadline.bold())
-                    .foregroundStyle(.teal)
-                Text("iOS 不开放「最大容量 / 循环次数」给第三方 App，但系统会把它们写进"
-                     + "「设置 → 隐私与安全性 → 分析与改进 → 分析数据」里的 Analytics 日志。"
-                     + "导出后导入本 App，即可得到系统原生数值。")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                Button { showingFileImporter = true } label: {
-                    Label("导入分析日志", systemImage: "square.and.arrow.down")
-                        .frame(maxWidth: .infinity)
+            infoRow(
+                icon: "iphone.gen3", tint: .green,
+                title: UIDevice.current.name,
+                accessory: {
+                    // 系统版本徽章（对应截图的「iOS xx.x >」）
+                    Text("iOS \(UIDevice.current.systemVersion)")
+                        .font(.caption.bold())
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(.quaternary, in: Capsule())
+                }())
+
+            if let record = latest {
+                infoRow(
+                    icon: "battery.100", tint: healthTint(record.maximumCapacity),
+                    title: "电池健康度",
+                    accessory: valueText(String(format: "%.0f", record.maximumCapacity) + " %",
+                                         color: healthTint(record.maximumCapacity)))
+            }
+            if let cycles = latest?.cycleCount ?? latestAnalytics?.cycleCount {
+                infoRow(
+                    icon: "arrow.2.circlepath", tint: .blue,
+                    title: "循环次数",
+                    accessory: valueText("\(cycles) 次", color: .primary))
+            }
+            if let temp = latestAnalytics?.temperature {
+                infoRow(
+                    icon: "thermometer.medium", tint: .orange,
+                    title: "估算温度",
+                    accessory: valueText(String(format: "约 %.0f ℃", temp), color: .primary))
+            }
+            if let nominal = latestAnalytics?.nominalChargeCapacity {
+                let designText = latestAnalytics?.designCapacity.map { " / 出厂 \($0) mAh" } ?? ""
+                infoRow(
+                    icon: "bolt.big", tint: .teal,
+                    title: "电池容量",
+                    accessory: valueText("当前 \(nominal) mAh" + designText, color: .primary))
+            }
+            if let date = latest?.date {
+                infoRow(
+                    icon: "calendar", tint: .gray,
+                    title: "最近检测",
+                    accessory: valueText(date.formatted(.dateTime.month().day()), color: .secondary))
+            }
+        } header: {
+            Text("设备信息")
+        }
+    }
+
+    private func infoRow(icon: String, tint: Color, title: String, accessory: some View) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.body)
+                .foregroundStyle(tint)
+                .frame(width: 26)
+            Text(title)
+                .font(.body)
+                .lineLimit(1)
+            Spacer()
+            accessory
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func valueText(_ text: String, color: Color) -> some View {
+        Text(text)
+            .font(.subheadline.bold())
+            .foregroundStyle(color)
+            .lineLimit(1)
+    }
+
+    // MARK: - 趋势图表卡（参考截图第二张卡片）
+
+    private var trendCard: some View {
+        Section {
+            // 头部：「健康 / 容量」切换 + 衰减速率 + 详细分析入口
+            VStack(spacing: 12) {
+                HStack {
+                    if hasCapacityData {
+                        Picker("指标", selection: $metric) {
+                            ForEach(ChartMetric.allCases) { Text($0.rawValue).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 150)
+                    } else {
+                        Text(metric == .health ? "健康度趋势" : "容量趋势")
+                            .font(.headline)
+                    }
+
+                    Spacer()
+
+                    if metric == .health, let rate = BatteryAnalytics.healthDeclinePerMonth(vm.healthRecords) {
+                        // 对应截图的「↘ -0.06%」：衰减为正数，用红色向下箭头
+                        Label(String(format: "%.2f", rate), systemImage: "arrow.down.right")
+                            .font(.subheadline.bold())
+                            .foregroundStyle(.red)
+                    }
+
+                    Button { showingAnalytics = true } label: {
+                        Label("详细分析", systemImage: "arrow.up.right")
+                            .font(.footnote.bold())
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(.quaternary, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(vm.isImporting)
+
+                trendChart
+
+                // 底部摘要行（对应截图的「⚖️ 正常老化 · 约 2 年 9 个月到 80%」）
+                if let summary = summaryText {
+                    HStack(spacing: 6) {
+                        Image(systemName: "scalemass")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        Text(summary)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .padding(.top, 2)
+                }
             }
             .padding(.vertical, 4)
+        } header: {
+            Text("趋势")
         }
+    }
+
+    private var trendChart: some View {
+        let points = chartPoints
+        return Chart {
+            ForEach(points, id: \.date) { point in
+                LineMark(
+                    x: .value("日期", point.date),
+                    y: .value(metric == .health ? "健康度" : "容量", point.value)
+                )
+                .foregroundStyle(Color.green)
+                .interpolationMethod(.monotone)
+
+                PointMark(
+                    x: .value("日期", point.date),
+                    y: .value(metric == .health ? "健康度" : "容量", point.value)
+                )
+                .foregroundStyle(Color.green)
+                // 对应截图里每个点上方/下方的数值标签；点太多时只标首尾，避免糊成一团
+                .annotation(position: .top, spacing: 6) {
+                    if points.count <= 8
+                        || point.date == points.first?.date
+                        || point.date == points.last?.date {
+                        Text(label(for: point.value))
+                            .font(.caption2.bold())
+                            .foregroundStyle(.green)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(.thinMaterial, in: Capsule())
+                    }
+                }
+            }
+            // 健康度视图下画出 80% 更换阈值参考线
+            if metric == .health {
+                RuleMark(y: .value("更换阈值", 80.0))
+                    .foregroundStyle(.red.opacity(0.6))
+                    .lineStyle(StrokeStyle(dash: [4, 3]))
+            }
+        }
+        .chartYScale(domain: yDomain(for: points))
+        .chartXAxis {
+            AxisMarks(values: .automatic(desiredCount: 4))
+        }
+        .frame(height: 180)
+    }
+
+    private func label(for value: Double) -> String {
+        metric == .health ? String(format: "%.1f", value) : "\(Int(value))"
+    }
+
+    /// Y 轴范围：健康度固定 70~100；容量按数据自适应并留出余量（也给标签留空间）
+    private func yDomain(for points: [(date: Date, value: Double)]) -> ClosedRange<Double> {
+        if metric == .health { return 70...100 }
+        guard let min = points.map(\.value).min(),
+              let max = points.map(\.value).max() else { return 0...100 }
+        let pad = max(50, (max - min) * 0.3)
+        return max(0, min - pad)...(max + pad)
+    }
+
+    /// 底部摘要：按当前衰减速率估算降到 80% 的时间
+    private var summaryText: String? {
+        guard metric == .health,
+              let latest = latest,
+              let months = BatteryAnalytics.monthsUntil80(records: vm.healthRecords) else { return nil }
+        let state = (BatteryAnalytics.healthDeclinePerMonth(vm.healthRecords) ?? 0) <= 1.0 ? "正常老化" : "老化偏快"
+        if months >= 12 {
+            let years = Int(months) / 12
+            let rest = Int(months) % 12
+            let duration = rest > 0 ? "约 \(years) 年 \(rest) 个月" : "约 \(years) 年"
+            return "\(state) · \(duration)到 80%"
+        }
+        return "\(state) · 约 \(Int(months)) 个月到 80%（当前 \(String(format: "%.0f", latest.maximumCapacity))%）"
+    }
+
+    // MARK: - 检测记录（参考截图底部的每日卡片）
+
+    private var recordsSection: some View {
+        Section("检测记录（\(sortedHealth.count) 条）") {
+            ForEach(reversedHealth) { record in
+                recordCard(record)
+            }
+            .onDelete { offsets in
+                offsets.map { reversedHealth[$0] }
+                    .forEach { vm.deleteHealth($0) }
+            }
+        }
+    }
+
+    private func recordCard(_ record: HealthRecord) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "iphone.gen3")
+                .font(.title3)
+                .foregroundStyle(.green)
+                .frame(width: 40, height: 40)
+                .background(Color.green.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 8) {
+                    Label(String(format: "%.0f", record.maximumCapacity) + " %",
+                          systemImage: "battery.100")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(healthTint(record.maximumCapacity))
+                    if let cycles = record.cycleCount {
+                        Text("·")
+                            .foregroundStyle(.quaternary)
+                        Label("\(cycles) 次", systemImage: "arrow.2.circlepath")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                HStack(spacing: 6) {
+                    // 评级徽章（对应截图的「良好 / 一般」）
+                    Text(rating(for: record.maximumCapacity).text)
+                        .font(.caption2.bold())
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
+                        .background(rating(for: record.maximumCapacity).color.opacity(0.15),
+                                    in: Capsule())
+                        .foregroundStyle(rating(for: record.maximumCapacity).color)
+                    if let note = record.note, !note.isEmpty {
+                        Text(note)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+            }
+
+            Spacer()
+
+            // 日期徽章（对应截图的「09/23」）
+            Text(record.date.formatted(.dateTime.month().day()))
+                .font(.caption.bold())
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(.quaternary, in: Capsule())
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func rating(_ health: Double) -> (text: String, color: Color) {
+        switch health {
+        case 95...:  return ("优秀", .green)
+        case 85..<95: return ("良好", .teal)
+        case 80..<85: return ("一般", .orange)
+        default:     return ("较差", .red)
+        }
+    }
+
+    private func healthTint(_ health: Double) -> Color {
+        if health < 80 { return .red }
+        if health < 85 { return .orange }
+        return .green
     }
 
     // MARK: - 手动录入
@@ -381,8 +482,7 @@ struct BatteryHomeView: View {
             Text("还没有电池数据").font(.headline)
             Text("iOS 不开放「最大容量 / 循环次数」给第三方 App。\n"
                  + "最准确的做法是从系统「分析数据」导入日志，\n"
-                 + "也可以手动录入：设置 → 电池 → 电池健康与充电。\n\n"
-                 + "累计两次以上记录后，就能看到衰减曲线和寿命预估。")
+                 + "也可以手动录入：设置 → 电池 → 电池健康与充电。")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
