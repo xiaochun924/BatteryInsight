@@ -92,9 +92,8 @@ struct AnalyticsRecord: Codable, Identifiable, Equatable, Sendable {
             || nominalChargeCapacity != nil || designCapacity != nil
     }
 
-    var dateText: String {
-        date.formatted(.dateTime.year().month().day().hour().minute())
-    }
+    /// 中文日期（跟设备语言无关）：「2026年9月23日 08:00」
+    var dateText: String { date.chineseDateTimeText }
 
     /// 是否解析到了至少一个有意义的字段
     var hasAnyMetric: Bool {
