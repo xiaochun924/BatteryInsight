@@ -51,5 +51,83 @@
     <true/>
     <key>UIStatusBarStyle</key>
     <string>UIStatusBarStyleDefault</string>
+
+    <!-- ══ 让本 App 出现在「文件」App / 分享菜单的「用其他应用打开」列表里 ══
+         没有 CFBundleDocumentTypes 声明，系统就不知道本 App 能处理什么文件，
+         分享时自然找不到它。 -->
+
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>iOS 分析日志</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <!-- Alternate：系统默认归属不变，本 App 只作为可选项出现 -->
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>com.xiaochun924.batteryinsight.ips</string>
+            </array>
+        </dict>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>文本与 JSON</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>public.plain-text</string>
+                <string>public.json</string>
+                <string>public.text</string>
+            </array>
+        </dict>
+        <dict>
+            <!-- 兜底：`.ips.ca.synced`（iCloud 同步过来的日志）这类复合后缀
+                 无法被上面的 UTI 识别，声明 public.data 保证它也能分享过来 -->
+            <key>CFBundleTypeName</key>
+            <string>其他数据文件</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>public.data</string>
+            </array>
+        </dict>
+    </array>
+
+    <!-- `.ips` 没有公开 UTI，必须自己导出一个，系统才能把文件关联到本 App -->
+    <key>UTExportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>com.xiaochun924.batteryinsight.ips</string>
+            <key>UTTypeDescription</key>
+            <string>iOS 分析日志</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.plain-text</string>
+            </array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array>
+                    <string>ips</string>
+                    <string>log</string>
+                </array>
+                <key>public.mime-type</key>
+                <string>text/plain</string>
+            </dict>
+        </dict>
+    </array>
+
+    <!-- 只读取内容，不需要在原位编辑文档 -->
+    <key>LSSupportsOpeningDocumentsInPlace</key>
+    <false/>
 </dict>
 </plist>
