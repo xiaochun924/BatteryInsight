@@ -246,7 +246,41 @@ enum DerivedMetrics {
                 formula: source("temperature", in: record, fallback: "Temperature"),
                 basis: "日志原生字段"))
         }
+        if let d = record.firstUseDate {
+            out.append(DerivedMetric(
+                title: "首次使用日期", value: d.chineseDateText, unit: "",
+                icon: "calendar.badge.clock",
+                formula: source("firstUse", in: record, fallback: "DOFU"),
+                basis: "日志原生字段（DOFU，Date Of First Use）"))
+        }
+        if let changed = record.batterySerialChanged {
+            out.append(DerivedMetric(
+                title: "电池来源",
+                value: changed ? "疑似非原装 / 已更换" : "原装",
+                unit: "",
+                icon: "checkmark.shield",
+                formula: source("batterySerialChanged", in: record, fallback: "BatterySerialChanged"),
+                basis: "日志原生字段（false=原装，true=序列变更）"))
+        }
+        if let power = DerivedMetrics.maxChargePower(from: record) {
+            out.append(power)
+        }
         return out
+    }
+
+    /// 最大充电功率 = 峰值充电电流 × 峰值电压（W）。
+    /// 日志给出 mA 与 mV，换算成 A 与 V 后相乘，粗略反映充电功率上限。
+    static func maxChargePower(from record: AnalyticsRecord) -> DerivedMetric? {
+        guard let current = record.maxChargeCurrent,
+              let voltage = record.maxPackVoltage else { return nil }
+        let watts = current * voltage
+        return DerivedMetric(
+            title: "最大充电功率",
+            value: String(format: "%.1f", watts),
+            unit: "W",
+            icon: "bolt.fill",
+            formula: "峰值充电电流 × 峰值电压",
+            basis: "\(String(format: "%.2f", current)) A × \(String(format: "%.2f", voltage)) V")
     }
 
     private static func source(_ field: String,
