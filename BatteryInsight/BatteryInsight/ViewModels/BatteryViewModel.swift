@@ -144,6 +144,7 @@ final class BatteryViewModel: ObservableObject {
             dailyMinSoc: fresh.dailyMinSoc,
             dailyMaxSoc: fresh.dailyMaxSoc,
             totalOperatingHours: fresh.totalOperatingHours,
+            unpluggedDurationSeconds: old.unpluggedDurationSeconds ?? fresh.unpluggedDurationSeconds,
             lastUpdateTime: fresh.lastUpdateTime,
             firstUseDate: old.firstUseDate ?? fresh.firstUseDate,
             batterySerialChanged: old.batterySerialChanged ?? fresh.batterySerialChanged,

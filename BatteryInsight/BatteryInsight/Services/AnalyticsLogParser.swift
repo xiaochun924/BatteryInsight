@@ -178,10 +178,25 @@ enum AnalyticsLogParser {
 
         var records: [AnalyticsRecord] = []
         var missingDate = false
+        // 当天未插电总时长（秒）按日缓存：UnpluggedDurationEnergyViewNew 是独立段，
+        // 不单独成记录，解析后合并进同一天的主记录
+        var durationByDay: [Date: Double] = [:]
 
         for entry in entries {
-            guard let object = dictionary(from: entry.raw),
-                  let source = batterySource(in: object) else { continue }
+            guard let object = dictionary(from: entry.raw) else { continue }
+            // 未插电时长段：只有 daily_total_Duration 一个有用键（秒），其余字段无意义
+            if let name = object["name"] as? String,
+               name == "UnpluggedDurationEnergyViewNew",
+               let message = object["message"] as? [String: Any],
+               let duration = pickUnpluggedDuration(message) {
+                let date = fileDate ?? nearestDate(before: entry.start, in: stamps)
+                if let date = date {
+                    let day = Calendar.current.startOfDay(for: date)
+                    if durationByDay[day] == nil { durationByDay[day] = duration }
+                }
+                continue
+            }
+            guard let source = batterySource(in: object) else { continue }
             // 日期优先级：电池行自带日期 > 文件聚合起始日（startTimestamp）
             // > 行之前最近的时间戳（表头生成时刻）
             let date = extractDate(from: object)
@@ -216,6 +231,16 @@ enum AnalyticsLogParser {
         }
         result.records = byDay.values.sorted { $0.date < $1.date }
 
+        // 把当天未插电时长合并进同一天主记录（主记录没有该字段时）
+        if !durationByDay.isEmpty {
+            result.records = result.records.map { r in
+                guard r.unpluggedDurationSeconds == nil else { return r }
+                let day = Calendar.current.startOfDay(for: r.date)
+                guard let d = durationByDay[day] else { return r }
+                return r.withUnpluggedDuration(d)
+            }
+        }
+
         if result.records.isEmpty {
             result.warnings.append(
                 "未识别到电池数据。请确认选中的是「分析数据」里的 "
@@ -240,6 +265,8 @@ enum AnalyticsLogParser {
         Array("apacitypercent".utf8), Array("apacity_percent".utf8),
         Array("ominalchargecapacity".utf8), Array("ominal_charge_capacity".utf8),
         Array("esigncapacity".utf8), Array("esign_capacity".utf8),
+        // 当天未插电总时长段（UnpluggedDurationEnergyViewNew.daily_total_Duration）
+        Array("npluggedduration".utf8), Array("ailytotalduration".utf8),
     ]
 
     /// 所有 hint 的首字节（小写 ASCII）：y/a/o/e。用于滑窗前的快速排除，
@@ -460,6 +487,17 @@ enum AnalyticsLogParser {
     }
 
     // MARK: - 组装记录
+
+    /// UnpluggedDurationEnergyViewNew.message 的当天未插电总时长（秒）。
+    /// 一天最多 24h = 86400s，超出视为抓错键。
+    private static func pickUnpluggedDuration(_ message: [String: Any]) -> Double? {
+        for (key, value) in message {
+            guard normalized(key) == "dailytotalduration",
+                  let v = numeric(value), v >= 0, v <= 86_400 else { continue }
+            return v
+        }
+        return nil
+    }
 
     private static func record(from source: [String: Any],
                                date: Date,

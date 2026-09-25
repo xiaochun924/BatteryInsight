@@ -236,7 +236,7 @@ struct BatteryHomeView: View {
 
     private var trendCard: some View {
         Section {
-            // 头部：「健康 / 容量」切换 + 衰减速率
+            // 头部：「健康 / 容量」切换 + 衰减速率 + 详细分析入口
             VStack(spacing: 12) {
                 HStack {
                     if hasCapacityData {
@@ -387,7 +387,7 @@ struct BatteryHomeView: View {
         }
     }
 
-    /// 取该条记录同一天的分析日志（详情页的数据源之一）
+    /// 取该条手动记录同一天的分析日志（详情页的数据源之一）
     private func analyticsFor(_ record: HealthRecord) -> AnalyticsRecord? {
         let day = Calendar.current.startOfDay(for: record.date)
         return sortedAnalytics.first { Calendar.current.startOfDay(for: $0.date) == day }
@@ -440,8 +440,7 @@ struct BatteryHomeView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            // 列3：日期徽章 + 累计运行时长（截图对应「09/24 / 4时10分」；
-            // 日志只有累计运行时间，超过 24h 折成天显示）
+            // 列3：日期徽章 + 当天未插电时长（文件抓取的续航，X时Y分）
             VStack(alignment: .trailing, spacing: 6) {
                 Text(record.date.chineseDateText)
                     .font(.caption.bold())
@@ -449,8 +448,8 @@ struct BatteryHomeView: View {
                     .padding(.vertical, 3)
                     .background(.quaternary, in: Capsule())
                     .foregroundStyle(.secondary)
-                if let hours = analytics?.totalOperatingHours {
-                    Text(runtimeText(hours))
+                if let seconds = analytics?.unpluggedDurationSeconds {
+                    Text(durationText(seconds))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
@@ -464,12 +463,11 @@ struct BatteryHomeView: View {
         .padding(.vertical, 6)
     }
 
-    /// 累计运行时长文案：≥24h 折成「X 天」，否则「X 小时」
-    private func runtimeText(_ hours: Double) -> String {
-        if hours >= 24 {
-            return "\(Int(hours / 24)) 天"
-        }
-        return "\(Int(hours)) 小时"
+    /// 当天未插电时长文案：「X时Y分」—— 文件抓取到的当天续航
+    /// （UnpluggedDurationEnergyViewNew.daily_total_Duration，秒，参考竞品同口径显示）
+    private func durationText(_ seconds: Double) -> String {
+        let total = Int(seconds.rounded())
+        return "\(total / 3600)时\(total % 3600 / 60)分"
     }
 
     private func rating(_ health: Double) -> (text: String, color: Color) {

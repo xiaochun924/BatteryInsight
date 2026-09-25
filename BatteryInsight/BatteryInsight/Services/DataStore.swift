@@ -92,14 +92,24 @@ final class DataStore: ObservableObject {
 
     // MARK: - 分析日志记录
 
-    /// 合并导入的分析记录：按「日期 + 系统健康度」去重，返回新增条数
+    /// 合并导入的分析记录：按「日期 + 系统健康度」去重，返回新增条数。
+    /// 已存在的同 key 记录用新解析值**覆盖刷新**——修复字段 / 单位后，
+    /// 用户重新导入同一份日志即可把旧值更新为新口径（如 TotalOperatingTime ÷10 旧值）。
     @discardableResult
     func mergeAnalytics(_ incoming: [AnalyticsRecord]) -> Int {
         var existingKeys = Set(analyticsRecords.map(Self.dedupeKey))
         var added = 0
-        for r in incoming where !existingKeys.contains(Self.dedupeKey(r)) {
+        for r in incoming {
+            let key = Self.dedupeKey(r)
+            if existingKeys.contains(key) {
+                // 重复记录：直接用新解析值替换旧记录（刷新字段）
+                if let idx = analyticsRecords.firstIndex(where: { Self.dedupeKey($0) == key }) {
+                    analyticsRecords[idx] = r
+                }
+                continue
+            }
             analyticsRecords.append(r)
-            existingKeys.insert(Self.dedupeKey(r))
+            existingKeys.insert(key)
             added += 1
         }
         analyticsRecords.sort { $0.date < $1.date }

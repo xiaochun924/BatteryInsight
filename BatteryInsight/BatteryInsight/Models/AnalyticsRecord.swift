@@ -41,6 +41,9 @@ struct AnalyticsRecord: Codable, Identifiable, Equatable, Sendable {
     var dailyMaxSoc: Int?
     /// 累计运行时间（小时）—— TotalOperatingTime（日志 0.1h，已换算）
     var totalOperatingHours: Double?
+    /// 当天未插电总时长（秒）—— UnpluggedDurationEnergyViewNew.daily_total_Duration。
+    /// 即「文件抓取到的续航」：当天拔掉电源的累计时长，转成「X时Y分」直接展示。
+    var unpluggedDurationSeconds: Double?
     /// 记录更新时间 —— UpdateTime（Unix 秒）
     var lastUpdateTime: Date?
     /// 首次使用日期 —— DOFU（Date Of First Use，Unix 秒）。
@@ -89,6 +92,7 @@ struct AnalyticsRecord: Codable, Identifiable, Equatable, Sendable {
          dailyMinSoc: Int? = nil,
          dailyMaxSoc: Int? = nil,
          totalOperatingHours: Double? = nil,
+         unpluggedDurationSeconds: Double? = nil,
          lastUpdateTime: Date? = nil,
          firstUseDate: Date? = nil,
          batterySerialChanged: Bool? = nil,
@@ -118,6 +122,7 @@ struct AnalyticsRecord: Codable, Identifiable, Equatable, Sendable {
         self.dailyMinSoc = dailyMinSoc
         self.dailyMaxSoc = dailyMaxSoc
         self.totalOperatingHours = totalOperatingHours
+        self.unpluggedDurationSeconds = unpluggedDurationSeconds
         self.lastUpdateTime = lastUpdateTime
         self.firstUseDate = firstUseDate
         self.batterySerialChanged = batterySerialChanged
@@ -136,7 +141,7 @@ struct AnalyticsRecord: Codable, Identifiable, Equatable, Sendable {
              designCapacity, rawMaxCapacity, minFCC, maxFCC, minQmax, maxQmax, qmaxCell0,
              minPackVoltage, maxPackVoltage, maxChargeCurrent, maxDischargeCurrent,
              minTemperature, maxTemperature, dailyMinSoc, dailyMaxSoc,
-             totalOperatingHours, lastUpdateTime,
+             totalOperatingHours, unpluggedDurationSeconds, lastUpdateTime,
              voltage, temperature, rawSnippet, extraFields, fieldSources, firstUseDate,
              batterySerialChanged
     }
@@ -164,6 +169,7 @@ struct AnalyticsRecord: Codable, Identifiable, Equatable, Sendable {
         dailyMinSoc = try? c.decode(Int.self, forKey: .dailyMinSoc)
         dailyMaxSoc = try? c.decode(Int.self, forKey: .dailyMaxSoc)
         totalOperatingHours = try? c.decode(Double.self, forKey: .totalOperatingHours)
+        unpluggedDurationSeconds = try? c.decode(Double.self, forKey: .unpluggedDurationSeconds)
         lastUpdateTime = try? c.decode(Date.self, forKey: .lastUpdateTime)
         firstUseDate = try? c.decode(Date.self, forKey: .firstUseDate)
         batterySerialChanged = try? c.decode(Bool.self, forKey: .batterySerialChanged)
@@ -191,7 +197,15 @@ struct AnalyticsRecord: Codable, Identifiable, Equatable, Sendable {
         systemHealthPercent != nil || cycleCount != nil
             || nominalChargeCapacity != nil || designCapacity != nil
             || voltage != nil || temperature != nil
+            || unpluggedDurationSeconds != nil
             || !extraFields.isEmpty
+    }
+
+    /// 把当天未插电时长（秒）补进记录（独立段解析后合并到同一天主记录用）
+    func withUnpluggedDuration(_ seconds: Double) -> AnalyticsRecord {
+        var r = self
+        r.unpluggedDurationSeconds = seconds
+        return r
     }
 
     /// 额外字段按名称排序，便于稳定展示
