@@ -10,23 +10,28 @@ struct SettingsView: View {
     @AppStorage("battery.shortcutName") private var shortcutName = ""
 
     var body: some View {
-        List {
-            Section {
-                TextField("快捷指令名称", text: $shortcutName)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-            } header: {
-                Text("快捷指令")
-            } footer: {
-                Text("在「快捷指令」App 中创建一条指令：选择文件 → 打开本 App。设置名称后，点击首页右上角「分析」会直接运行该快捷指令；留空则回退为系统文件选择器。")
+        NavigationStack {
+            List {
+                Section {
+                    TextField("快捷指令名称", text: $shortcutName)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                } header: {
+                    Text("快捷指令")
+                } footer: {
+                    Text("在「快捷指令」App 中创建一条指令：选择文件 → 打开本 App。设置名称后，点击首页右上角「分析」会直接运行该快捷指令；留空则回退为系统文件选择器。")
+                }
             }
+            .listStyle(.insetGrouped)
+            // 液态玻璃悬浮顶栏：弹窗左上关闭 + 右上确认
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                GlassTopBar(title: "设置", horizontalPadding: 28,
+                            leading: { GlassCircleButton(icon: "xmark") { dismiss() } },
+                            trailing: { GlassCircleButton(icon: "checkmark", tint: .green) { dismiss() } })
+            }
+            .offset(y: 8)
         }
-        .listStyle(.insetGrouped)
-        // 液态玻璃悬浮顶栏（与全 App 统一）；二级页左上返回
-        .toolbar(.hidden, for: .navigationBar)
-        .safeAreaInset(edge: .top, spacing: 0) {
-            GlassTopBar(title: "设置",
-                        leading: { GlassCircleButton(icon: "chevron.left") { dismiss() } })
-        }
+        .presentationDetents([.medium])
     }
 }
