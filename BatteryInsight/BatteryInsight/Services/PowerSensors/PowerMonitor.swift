@@ -12,6 +12,13 @@ nonisolated struct LiveSample: Identifiable, Hashable {
 
 /// Drives every probe on a one-second tick and merges the results into one
 /// observable object the whole UI reads from.
+///
+/// MainActor-isolated: every probe is driven from the tick that the UI starts and
+/// stops, and the two `Task`s below capture `self`. Under `SWIFT_STRICT_CONCURRENCY
+/// = complete` a plain `@Observable` class is not `Sendable`, so an unisolated
+/// `Task { [weak self] in … }` is rejected as a `sending` capture; isolating the
+/// whole class keeps those closures on the same actor and makes the capture legal.
+@MainActor
 @Observable
 final class PowerMonitor {
     // MARK: Published state
