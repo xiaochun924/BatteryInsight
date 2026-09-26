@@ -210,7 +210,6 @@ struct LifetimePredictionView: View {
         // 右上角保留绿色对勾确认
         .navigationTitle("寿命预测")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.glass, for: .navigationBar)
         .toolbarBackgroundVisibility(.visible, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {

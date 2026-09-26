@@ -92,7 +92,6 @@ struct BatteryHomeView: View {
         // 左上角菜单 + 右上角「+ 分析」作为顶栏动作（根页面无返回按钮）
         .navigationTitle("电池健康")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.glass, for: .navigationBar)
         .toolbarBackgroundVisibility(.visible, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {

@@ -44,7 +44,6 @@ struct ChargingPowerView: View {
         // iOS 26 官方液态玻璃导航栏：玻璃材质 + 滚动收成胶囊（根页面无返回按钮）
         .navigationTitle("充电功率")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.glass, for: .navigationBar)
         .toolbarBackgroundVisibility(.visible, for: .navigationBar)
         .onAppear { power.start() }
         .onDisappear { power.pause() }

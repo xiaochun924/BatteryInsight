@@ -34,8 +34,7 @@ struct BatteryReportView: View {
             // iOS 26 官方液态玻璃导航栏；sheet 内无返回按钮，左上角加关闭按钮
             .navigationTitle("周期报告")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.glass, for: .navigationBar)
-            .toolbarBackgroundVisibility(.visible, for: .navigationBar)
+                .toolbarBackgroundVisibility(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { dismiss() } label: {

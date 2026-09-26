@@ -57,7 +57,6 @@ struct RecordDetailView: View {
         // 返回按钮官方自动生成，右上角分享按钮走 toolbar
         .navigationTitle(titleText)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.glass, for: .navigationBar)
         .toolbarBackgroundVisibility(.visible, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {

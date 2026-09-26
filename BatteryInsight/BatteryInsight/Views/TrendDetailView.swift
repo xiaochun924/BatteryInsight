@@ -101,7 +101,6 @@ struct TrendDetailView: View {
         // iOS 26 官方液态玻璃导航栏：玻璃材质 + 滚动收成胶囊；返回按钮官方自动生成
         .navigationTitle("趋势分析")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.glass, for: .navigationBar)
         .toolbarBackgroundVisibility(.visible, for: .navigationBar)
         .sheet(isPresented: $showingLifetime) { LifetimePredictionView() }
     }

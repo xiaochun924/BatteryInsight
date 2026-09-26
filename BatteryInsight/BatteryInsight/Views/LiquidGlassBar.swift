@@ -3,7 +3,8 @@ import SwiftUI
 // MARK: - 液态玻璃动作按钮底
 
 /// 全 App 顶栏已改用 **iOS 26 官方液态玻璃导航栏**
-/// （`.toolbarBackground(.glass, for: .navigationBar)` + `.toolbarBackgroundVisibility(.visible)`），
+/// （`.toolbarBackgroundVisibility(.visible, for: .navigationBar)`——可见背景即由系统
+/// 渲染为液态玻璃材质），
 /// 标题、返回按钮、滚动收成胶囊均为官方套件。
 /// 本文件只保留顶栏动作按钮（菜单 / 分享 / 关闭 / 对勾）的玻璃圆底与胶囊底扩展。
 
