@@ -94,14 +94,19 @@ struct LiquidGlassTopBar: ViewModifier {
 
     // MARK: - 液态玻璃底（组件内部复用，iOS 26 官方 glassEffect）
 
-    /// 液态玻璃胶囊底：官方 `.glassEffect()` 渲染
+    /// 液态玻璃胶囊底：官方 `.glassEffect()` 渲染。
+    /// 浅色背景下系统玻璃偏暗，叠加 `.brightness` 提亮，同时保留官方玻璃质感。
     private var glassCapsuleBackground: some View {
-        Capsule().glassEffect()
+        Capsule()
+            .glassEffect()
+            .brightness(0.12)
     }
 
     /// 液态玻璃圆底：官方 `.glassEffect()` 渲染
     private var glassCircleBackground: some View {
-        Circle().glassEffect()
+        Circle()
+            .glassEffect()
+            .brightness(0.12)
     }
 }
 
@@ -129,18 +134,22 @@ extension View {
         )
     }
 
-    /// 液态玻璃胶囊底（顶栏动作按钮通用）：iOS 26 官方 `.glassEffect()`。
+    /// 液态玻璃胶囊底（顶栏动作按钮通用）：iOS 26 官方 `.glassEffect()` + 提亮。
     /// 用法：`Text("分析").padding(...).glassCapsuleBackground()`
     func glassCapsuleBackground() -> some View {
         self.background {
-            Capsule().glassEffect()
+            Capsule()
+                .glassEffect()
+                .brightness(0.12)
         }
     }
 
-    /// 液态玻璃圆形底（顶栏圆形按钮通用）：iOS 26 官方 `.glassEffect()`。
+    /// 液态玻璃圆形底（顶栏圆形按钮通用）：iOS 26 官方 `.glassEffect()` + 提亮。
     func glassCircleBackground() -> some View {
         self.background {
-            Circle().glassEffect()
+            Circle()
+                .glassEffect()
+                .brightness(0.12)
         }
     }
 }
