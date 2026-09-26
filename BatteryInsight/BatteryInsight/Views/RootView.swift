@@ -57,6 +57,8 @@ struct RootView: View {
             .tabItem { Label(HomeTab.adapter.rawValue, systemImage: HomeTab.adapter.icon) }
             .tag(HomeTab.adapter)
         }
+        // iOS 26 官方 Tab 栏最小化行为：内容向下滚动时 Tab 栏自动收成一条胶囊
+        .tabBarMinimizeBehavior(.onScrollDown)
         .environmentObject(vm)
         .onChange(of: scenePhase) { phase in
             // 后台期间定时器被系统挂起，回到前台立即补一次刷新
