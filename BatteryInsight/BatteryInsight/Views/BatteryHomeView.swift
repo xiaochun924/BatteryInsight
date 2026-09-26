@@ -26,7 +26,7 @@ struct BatteryHomeView: View {
     /// 右上角设置弹窗（配置快捷指令）
     @State private var showingSettings = false
     /// 快捷指令名称（在设置里配置；留空时「分析」回退系统文件选择器）
-    @AppStorage("battery.shortcutName") private var shortcutName = 
+    @AppStorage("battery.shortcutName") private var shortcutName = ""
     /// 图表显示哪种指标。容量数据只有导入分析日志后才有，届时才出现「容量」段
     @State private var metric: ChartMetric = .health
 
