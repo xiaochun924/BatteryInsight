@@ -532,12 +532,7 @@ struct BatteryHomeView: View {
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-}
 
-// MARK: - 解析中遮罩
-
-/// 解析几十 MB 的日志要几秒。之前没有这个反馈，界面就是一片黑屏，
-/// 看起来跟"点了没反应 / 卡死"一样。
     /// 导入入口：已配置快捷指令 → 运行快捷指令（快捷指令内选择文件并打开本 App）；
     /// 未配置或打开失败 → 直接弹系统文件选择器兜底
     private func openImport() {
@@ -554,6 +549,12 @@ struct BatteryHomeView: View {
         UIApplication.shared.open(url)
     }
 
+}
+
+// MARK: - 解析中遮罩
+
+/// 解析几十 MB 的日志要几秒。之前没有这个反馈，界面就是一片黑屏，
+/// 看起来跟"点了没反应 / 卡死"一样。
 private struct ImportingOverlay: View {
     let stage: String?
 
