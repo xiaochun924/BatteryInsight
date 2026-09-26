@@ -2,10 +2,11 @@ import SwiftUI
 
 /// 应用根视图。
 ///
-/// 三个 Tab 页面，功能分开显示：
+/// 四个 Tab 页面，功能分开显示：
 ///   - 「电池健康」：设备信息 / 健康趋势 / 检测记录（BatteryHomeView）
 ///   - 「充电功率」：实时功率仪表 / 充电会话（ChargingPowerView）
 ///   - 「发热」：系统发热状态 / 热力图 / 温度传感器（ThermalView）
+///   - 「适配器」：USB-PD 握手 / 供电档位 / 实时供电轨（AdapterView）
 struct RootView: View {
     @StateObject private var vm = BatteryViewModel()
     @Environment(\.scenePhase) private var scenePhase
@@ -18,12 +19,14 @@ struct RootView: View {
         case health = "电池健康"
         case power  = "充电功率"
         case thermal = "发热"
+        case adapter = "适配器"
         var id: String { rawValue }
         var icon: String {
             switch self {
             case .health: return "heart.fill"
             case .power:  return "bolt.fill"
             case .thermal: return "thermometer.medium"
+            case .adapter: return "powerplug"
             }
         }
     }
@@ -47,6 +50,12 @@ struct RootView: View {
             }
             .tabItem { Label(HomeTab.thermal.rawValue, systemImage: HomeTab.thermal.icon) }
             .tag(HomeTab.thermal)
+
+            NavigationStack {
+                AdapterView()
+            }
+            .tabItem { Label(HomeTab.adapter.rawValue, systemImage: HomeTab.adapter.icon) }
+            .tag(HomeTab.adapter)
         }
         .environmentObject(vm)
         .onChange(of: scenePhase) { phase in
