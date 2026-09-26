@@ -214,7 +214,6 @@ struct LifetimePredictionView: View {
                 leading: { GlassCircleButton(icon: "xmark") { dismiss() } },
                 trailing: { GlassCircleButton(icon: "checkmark", tint: .green) { dismiss() } }
             )
-            .offset(y: -8)
         }
     }
 
