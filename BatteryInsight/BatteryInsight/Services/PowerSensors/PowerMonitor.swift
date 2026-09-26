@@ -439,19 +439,19 @@ final class PowerMonitor {
                 // reached the catalog and the dial's caption fell back to English on
                 // every wired charge. `Text` and `LocalizedStringResource` literals
                 // want to be at their own return site.
-                if snapshot.isWirelessInput { return (watts, "from MagSafe") }
-                return (watts, "from charger")
+                if snapshot.isWirelessInput { return (watts, "来自 MagSafe") }
+                return (watts, "来自充电器")
             }
             // Wireless charging has no input-current sensor — the PMU exposes the
             // coil voltage and nothing to multiply it by — so rather than reading
             // "no reading" while the phone is visibly charging, the dial drops to
             // the battery side and says so. A measured zero is still a reading: a
             // phone sitting at 100 % on a charger is genuinely taking nothing.
-            if let watts = snapshot.batteryWatts { return (max(watts, 0), "into battery") }
+            if let watts = snapshot.batteryWatts { return (max(watts, 0), "充入电芯") }
             return nil
         }
-        if let watts = snapshot.batteryWatts, watts != 0 { return (abs(watts), "drawn from battery") }
-        if let watts = rateEstimateWatts { return (abs(watts), "from battery (%-rate estimate)") }
+        if let watts = snapshot.batteryWatts, watts != 0 { return (abs(watts), "电池放电") }
+        if let watts = rateEstimateWatts { return (abs(watts), "电池放电（百分比速率估算）") }
         return nil
     }
 
