@@ -11,6 +11,7 @@ struct TrendDetailView: View {
     @EnvironmentObject private var vm: BatteryViewModel
 
     @State private var showingLifetime = false
+    @Environment(\.dismiss) private var dismiss
 
     private var sortedHealth: [HealthRecord] {
         vm.healthRecords.sorted { $0.date < $1.date }
@@ -98,10 +99,12 @@ struct TrendDetailView: View {
             .padding(.bottom, 32)
         }
         .background(Color(.systemGroupedBackground))
-        // iOS 26 官方液态玻璃导航栏：玻璃材质 + 滚动收成胶囊；返回按钮官方自动生成
-        .navigationTitle("趋势分析")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackgroundVisibility(.visible, for: .navigationBar)
+        // 液态玻璃悬浮顶栏（参考 home-inventory 官方 Liquid Glass 实现）
+        .toolbar(.hidden, for: .navigationBar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            GlassTopBar(title: "趋势分析",
+                        leading: { GlassCircleButton(icon: "chevron.left") { dismiss() } })
+        }
         .sheet(isPresented: $showingLifetime) { LifetimePredictionView() }
     }
 

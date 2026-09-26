@@ -31,21 +31,11 @@ struct BatteryReportView: View {
 
                 reportSection(report)
             }
-            // iOS 26 官方液态玻璃导航栏；sheet 内无返回按钮，左上角加关闭按钮
-            .navigationTitle("周期报告")
-            .navigationBarTitleDisplayMode(.inline)
-                .toolbarBackgroundVisibility(.visible, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button { dismiss() } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(.primary)
-                            .frame(width: 40, height: 40)
-                            .glassCircleBackground()
-                    }
-                    .buttonStyle(.plain)
-                }
+            // 液态玻璃悬浮顶栏（参考 home-inventory 官方 Liquid Glass 实现）；sheet 左上角关闭
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                GlassTopBar(title: "周期报告",
+                            leading: { GlassCircleButton(icon: "xmark") { dismiss() } })
             }
         }
     }

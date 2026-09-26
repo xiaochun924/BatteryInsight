@@ -41,10 +41,11 @@ struct ChargingPowerView: View {
                 }
             }
         }
-        // iOS 26 官方液态玻璃导航栏：玻璃材质 + 滚动收成胶囊（根页面无返回按钮）
-        .navigationTitle("充电功率")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackgroundVisibility(.visible, for: .navigationBar)
+        // 液态玻璃悬浮顶栏（参考 home-inventory 官方 Liquid Glass 实现）
+        .toolbar(.hidden, for: .navigationBar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            GlassTopBar(title: "充电功率")
+        }
         .onAppear { power.start() }
         .onDisappear { power.pause() }
     }

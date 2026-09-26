@@ -88,40 +88,42 @@ struct BatteryHomeView: View {
                 }
             }
         }
-        // iOS 26 官方液态玻璃导航栏：玻璃材质 + 滚动时自动收成胶囊，
-        // 左上角菜单 + 右上角「+ 分析」作为顶栏动作（根页面无返回按钮）
-        .navigationTitle("电池健康")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackgroundVisibility(.visible, for: .navigationBar)
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Menu {
-                    // 按需求只保留「周期报告」；手动添加记录 / 日志分析 / 优化建议
-                    // 三个功能已整体删除
-                    Button { showingReport = true } label: {
-                        Label("周期报告", systemImage: "calendar")
+        // 液态玻璃悬浮顶栏（参考 home-inventory 官方 Liquid Glass 实现）：
+        // GlassEffectContainer 共享采样 + 中间悬浮玻璃胶囊标题 + 两侧玻璃按钮，
+        // 完全隐藏系统导航栏，不加白色蒙皮 / 磨砂遮挡
+        .toolbar(.hidden, for: .navigationBar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            GlassTopBar(
+                title: "电池健康",
+                leading: {
+                    Menu {
+                        // 按需求只保留「周期报告」；手动添加记录 / 日志分析 / 优化建议
+                        // 三个功能已整体删除
+                        Button { showingReport = true } label: {
+                            Label("周期报告", systemImage: "calendar")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundColor(.primary)
+                            .frame(width: 40, height: 40)
+                            .glassEffect(.regular.interactive(), in: .circle)
                     }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .frame(width: 40, height: 40)
-                        .glassCircleBackground()
+                    .buttonStyle(.plain)
+                },
+                trailing: {
+                    Button { showingFileImporter = true } label: {
+                        Text("分析")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(.primary)
+                            .padding(.horizontal, 14)
+                            .frame(height: 40)
+                            .glassEffect(.regular.interactive(), in: .capsule)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(vm.isImporting)
                 }
-                .buttonStyle(.plain)
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                // 右上角「+ 分析」玻璃胶囊按钮
-                Button { showingFileImporter = true } label: {
-                    Label("分析", systemImage: "plus")
-                        .font(.subheadline.bold())
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 9)
-                        .glassCapsuleBackground()
-                }
-                .buttonStyle(.plain)
-                .disabled(vm.isImporting)
-            }
+            )
         }
         .sheet(isPresented: $showingReport) { BatteryReportView() }
         .sheet(isPresented: $showingLifetime) { LifetimePredictionView() }

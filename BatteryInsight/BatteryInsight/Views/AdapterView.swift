@@ -30,10 +30,11 @@ struct AdapterView: View {
             .padding(.top, 8)
             .padding(.bottom, 24)
         }
-        // iOS 26 官方液态玻璃导航栏：玻璃材质 + 滚动收成胶囊（根页面无返回按钮）
-        .navigationTitle("适配器")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackgroundVisibility(.visible, for: .navigationBar)
+        // 液态玻璃悬浮顶栏（参考 home-inventory 官方 Liquid Glass 实现）
+        .toolbar(.hidden, for: .navigationBar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            GlassTopBar(title: "适配器")
+        }
         .onAppear { power.start() }
         .onDisappear { power.pause() }
     }

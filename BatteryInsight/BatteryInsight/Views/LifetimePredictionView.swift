@@ -206,32 +206,14 @@ struct LifetimePredictionView: View {
             .padding(.vertical, 12)
         }
         .background(Color(.systemGroupedBackground))
-        // iOS 26 官方液态玻璃导航栏；sheet 内无返回按钮，左上角加关闭按钮，
-        // 右上角保留绿色对勾确认
-        .navigationTitle("寿命预测")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackgroundVisibility(.visible, for: .navigationBar)
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button { dismiss() } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .frame(width: 40, height: 40)
-                        .glassCircleBackground()
-                }
-                .buttonStyle(.plain)
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { dismiss() } label: {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.green)
-                        .frame(width: 40, height: 40)
-                        .glassCircleBackground()
-                }
-                .buttonStyle(.plain)
-            }
+        // 液态玻璃悬浮顶栏（参考 home-inventory 官方 Liquid Glass 实现）；左上关闭 + 右上对勾
+        .toolbar(.hidden, for: .navigationBar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            GlassTopBar(
+                title: "寿命预测",
+                leading: { GlassCircleButton(icon: "xmark") { dismiss() } },
+                trailing: { GlassCircleButton(icon: "checkmark", tint: .green) { dismiss() } }
+            )
         }
     }
 

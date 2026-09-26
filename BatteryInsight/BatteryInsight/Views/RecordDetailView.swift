@@ -53,27 +53,17 @@ struct RecordDetailView: View {
             case .others: othersTab
             }
         }
-        // iOS 26 官方液态玻璃导航栏：玻璃材质 + 滚动收成胶囊；
-        // 返回按钮官方自动生成，右上角分享按钮走 toolbar
-        .navigationTitle(titleText)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackgroundVisibility(.visible, for: .navigationBar)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                // 分享按钮：与左上返回按钮同款液态玻璃圆形底。
-                // 不用 ShareLink——它的默认样式会覆盖 label 的玻璃圆底，
-                // 导致右上角出现一个无底的普通图标。改用 Button + 系统分享面板。
-                Button {
-                    presentShareSheet()
-                } label: {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .frame(width: 40, height: 40)
-                        .glassCircleBackground()
+        // 液态玻璃悬浮顶栏（参考 home-inventory 官方 Liquid Glass 实现）
+        .toolbar(.hidden, for: .navigationBar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            GlassTopBar(
+                title: titleText,
+                leading: { GlassCircleButton(icon: "chevron.left") { dismiss() } },
+                trailing: {
+                    // 分享：Button + 系统分享面板（不用 ShareLink，保证玻璃圆底样式）
+                    GlassCircleButton(icon: "square.and.arrow.up") { presentShareSheet() }
                 }
-                .buttonStyle(.plain)
-            }
+            )
         }
         // 复制成功的反馈用图标变化（✓）表达；部署目标 iOS 26，可用 sensoryFeedback
         .sensoryFeedback(.success, trigger: copiedText)
@@ -540,12 +530,11 @@ private struct UsageDetailSheet: View {
                     }
                 }
             }
-            .navigationTitle("续航详情")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("完成") { dismiss() }
-                }
+            // 液态玻璃悬浮顶栏（参考 home-inventory 官方 Liquid Glass 实现）；左上角关闭
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                GlassTopBar(title: "续航详情",
+                            leading: { GlassCircleButton(icon: "xmark") { dismiss() } })
             }
         }
         .presentationDetents([.medium, .large])
