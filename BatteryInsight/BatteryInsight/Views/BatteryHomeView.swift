@@ -538,6 +538,22 @@ struct BatteryHomeView: View {
 
 /// 解析几十 MB 的日志要几秒。之前没有这个反馈，界面就是一片黑屏，
 /// 看起来跟"点了没反应 / 卡死"一样。
+    /// 导入入口：已配置快捷指令 → 运行快捷指令（快捷指令内选择文件并打开本 App）；
+    /// 未配置或打开失败 → 直接弹系统文件选择器兜底
+    private func openImport() {
+        let name = shortcutName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else {
+            showingFileImporter = true
+            return
+        }
+        guard let encoded = name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "shortcuts://run-shortcut?name=\(encoded)") else {
+            showingFileImporter = true
+            return
+        }
+        UIApplication.shared.open(url)
+    }
+
 private struct ImportingOverlay: View {
     let stage: String?
 
@@ -558,20 +574,4 @@ private struct ImportingOverlay: View {
         }
         .allowsHitTesting(true)
     }
-    /// 导入入口：已配置快捷指令 → 运行快捷指令（快捷指令内选择文件并打开本 App）；
-    /// 未配置或打开失败 → 直接弹系统文件选择器兜底
-    private func openImport() {
-        let name = shortcutName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else {
-            showingFileImporter = true
-            return
-        }
-        guard let encoded = name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let url = URL(string: "shortcuts://run-shortcut?name=\(encoded)") else {
-            showingFileImporter = true
-            return
-        }
-        UIApplication.shared.open(url)
-    }
-
 }
