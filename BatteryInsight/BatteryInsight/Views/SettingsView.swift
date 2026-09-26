@@ -28,10 +28,12 @@ struct SettingsView: View {
             // 与寿命预测页同款左右对称布局
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
-                // sheet 顶部有大圆角：水平边距 28 避开弧线，垂直 0 让左右按钮中心与圆角中心对齐
+                // sheet 顶部有大圆角：水平边距 28 避开弧线；
+                // 顶栏上移 16pt，让左右按钮垂直中心与圆角中心对齐
                 GlassTopBar(title: "设置", horizontalPadding: 28,
                             leading: { GlassCircleButton(icon: "xmark") { dismiss() } },
                             trailing: { GlassCircleButton(icon: "checkmark", tint: .green) { dismiss() } })
+                    .offset(y: -16)
             }
         }
         .presentationDetents([.medium])

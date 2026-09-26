@@ -36,6 +36,7 @@ struct BatteryReportView: View {
             .safeAreaInset(edge: .top, spacing: 0) {
                 GlassTopBar(title: "周期报告", horizontalPadding: 28,
                             leading: { GlassCircleButton(icon: "xmark") { dismiss() } })
+                    .offset(y: -16)
             }
         }
     }
