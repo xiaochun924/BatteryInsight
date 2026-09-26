@@ -206,10 +206,24 @@ struct LifetimePredictionView: View {
             .padding(.vertical, 12)
         }
         .background(Color(.systemGroupedBackground))
-        .liquidGlassTopBar(
-            title: "寿命预测",
-            // 截图右上角为绿色对勾确认，点击关闭
-            trailing: {
+        // iOS 26 官方液态玻璃导航栏；sheet 内无返回按钮，左上角加关闭按钮，
+        // 右上角保留绿色对勾确认
+        .navigationTitle("寿命预测")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.glass, for: .navigationBar)
+        .toolbarBackgroundVisibility(.visible, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .frame(width: 40, height: 40)
+                        .glassCircleBackground()
+                }
+                .buttonStyle(.plain)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Button { dismiss() } label: {
                     Image(systemName: "checkmark")
                         .font(.system(size: 15, weight: .semibold))
@@ -219,7 +233,7 @@ struct LifetimePredictionView: View {
                 }
                 .buttonStyle(.plain)
             }
-        )
+        }
     }
 
     // MARK: 状态卡（正常老化 + 双轨均衡 + 提示 + 每日次数）

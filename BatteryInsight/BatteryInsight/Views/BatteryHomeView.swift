@@ -88,12 +88,14 @@ struct BatteryHomeView: View {
                 }
             }
         }
-        // 液态玻璃悬浮顶栏：完全隐藏系统导航栏，居中玻璃胶囊标题，
-        // 左上角菜单 + 右上角「+ 分析」作为顶栏动作（无返回按钮，本页是根页面）
-        .liquidGlassTopBar(
-            title: "电池健康",
-            showsBackButton: false,
-            leading: {
+        // iOS 26 官方液态玻璃导航栏：玻璃材质 + 滚动时自动收成胶囊，
+        // 左上角菜单 + 右上角「+ 分析」作为顶栏动作（根页面无返回按钮）
+        .navigationTitle("电池健康")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.glass, for: .navigationBar)
+        .toolbarBackgroundVisibility(.visible, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
                 Menu {
                     // 按需求只保留「周期报告」；手动添加记录 / 日志分析 / 优化建议
                     // 三个功能已整体删除
@@ -108,8 +110,8 @@ struct BatteryHomeView: View {
                         .glassCircleBackground()
                 }
                 .buttonStyle(.plain)
-            },
-            trailing: {
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 // 右上角「+ 分析」玻璃胶囊按钮
                 Button { showingFileImporter = true } label: {
                     Label("分析", systemImage: "plus")
@@ -121,7 +123,7 @@ struct BatteryHomeView: View {
                 .buttonStyle(.plain)
                 .disabled(vm.isImporting)
             }
-        )
+        }
         .sheet(isPresented: $showingReport) { BatteryReportView() }
         .sheet(isPresented: $showingLifetime) { LifetimePredictionView() }
         // 直接从最顶层 VC 弹系统选择器，不再包一层 sheet——

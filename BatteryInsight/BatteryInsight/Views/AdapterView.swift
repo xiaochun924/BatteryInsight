@@ -30,8 +30,11 @@ struct AdapterView: View {
             .padding(.top, 8)
             .padding(.bottom, 24)
         }
-        // 液态玻璃悬浮顶栏：居中玻璃胶囊标题（无返回按钮，本页是根页面）
-        .liquidGlassTopBar(title: "适配器", showsBackButton: false)
+        // iOS 26 官方液态玻璃导航栏：玻璃材质 + 滚动收成胶囊（根页面无返回按钮）
+        .navigationTitle("适配器")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.glass, for: .navigationBar)
+        .toolbarBackgroundVisibility(.visible, for: .navigationBar)
         .onAppear { power.start() }
         .onDisappear { power.pause() }
     }

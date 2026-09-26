@@ -53,11 +53,14 @@ struct RecordDetailView: View {
             case .others: othersTab
             }
         }
-        // 液态玻璃悬浮顶栏：左上角圆形玻璃返回按钮 + 居中胶囊标题 + 右上分享
-        .liquidGlassTopBar(
-            title: titleText,
-            showsBackButton: true,
-            trailing: {
+        // iOS 26 官方液态玻璃导航栏：玻璃材质 + 滚动收成胶囊；
+        // 返回按钮官方自动生成，右上角分享按钮走 toolbar
+        .navigationTitle(titleText)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.glass, for: .navigationBar)
+        .toolbarBackgroundVisibility(.visible, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
                 // 分享按钮：与左上返回按钮同款液态玻璃圆形底。
                 // 不用 ShareLink——它的默认样式会覆盖 label 的玻璃圆底，
                 // 导致右上角出现一个无底的普通图标。改用 Button + 系统分享面板。
@@ -72,7 +75,7 @@ struct RecordDetailView: View {
                 }
                 .buttonStyle(.plain)
             }
-        )
+        }
         // 复制成功的反馈用图标变化（✓）表达；部署目标 iOS 26，可用 sensoryFeedback
         .sensoryFeedback(.success, trigger: copiedText)
         // 「查看详情」：续航详情弹窗

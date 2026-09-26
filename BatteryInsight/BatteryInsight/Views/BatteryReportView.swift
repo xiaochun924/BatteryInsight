@@ -15,6 +15,7 @@ struct BatteryReportView: View {
     }
 
     @State private var kind: ReportKind = .weekly
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
@@ -30,8 +31,23 @@ struct BatteryReportView: View {
 
                 reportSection(report)
             }
-            // 液态玻璃悬浮顶栏：返回按钮 + 居中胶囊标题
-            .liquidGlassTopBar(title: "周期报告")
+            // iOS 26 官方液态玻璃导航栏；sheet 内无返回按钮，左上角加关闭按钮
+            .navigationTitle("周期报告")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.glass, for: .navigationBar)
+            .toolbarBackgroundVisibility(.visible, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.primary)
+                            .frame(width: 40, height: 40)
+                            .glassCircleBackground()
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         }
     }
 
