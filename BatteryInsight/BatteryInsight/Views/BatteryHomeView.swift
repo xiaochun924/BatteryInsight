@@ -117,6 +117,7 @@ struct BatteryHomeView: View {
                             .foregroundColor(.primary)
                             .frame(width: 40, height: 40)
                             .glassEffect(.regular.interactive(), in: .circle)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 },
@@ -131,6 +132,7 @@ struct BatteryHomeView: View {
                                 .padding(.horizontal, 14)
                                 .frame(height: 40)
                                 .glassEffect(.regular.interactive(), in: .capsule)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .disabled(vm.isImporting)

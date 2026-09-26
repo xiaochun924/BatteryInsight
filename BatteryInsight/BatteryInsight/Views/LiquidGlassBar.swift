@@ -67,6 +67,9 @@ struct GlassCircleButton: View {
                 .foregroundColor(tint)
                 .frame(width: size, height: size)
                 .glassEffect(.regular.interactive(), in: .circle)
+                // iOS 26 按钮可点击区域默认只覆盖内容（图标本身），
+                // contentShape 让整个圆形玻璃底都可点
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
