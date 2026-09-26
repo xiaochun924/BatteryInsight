@@ -97,6 +97,8 @@ struct ChargingPowerView: View {
                           caption: power.headline?.caption,
                           tint: glowColor)
                     .padding(.top, 4)
+                    // 表盘在面板中水平居中（MiniWatts 原版 Panel 内容默认左对齐）
+                    .frame(maxWidth: .infinity)
 
                 HStack(spacing: 6) {
                     Pill(text: Text(statusTextCN),
@@ -115,6 +117,8 @@ struct ChargingPowerView: View {
                          systemImage: power.thermal.state.symbol,
                          tint: thermalTint)
                 }
+                // 状态胶囊行同样水平居中
+                .frame(maxWidth: .infinity)
             }
         }
     }
