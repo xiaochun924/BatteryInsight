@@ -42,15 +42,17 @@ struct LiquidGlassTopBar: ViewModifier {
         ZStack {
             // 中间悬浮玻璃胶囊标题：ZStack 默认居中，标题始终在整行正中，
             // 不参与左右 HStack 的宽度分配，左右按钮再宽也不会把它挤偏。
-            // 液态玻璃：直接用 iOS 26 官方 `.glassEffect()` 套件渲染（透明+折射+系统高光），
-            // 不再手写渐变模拟
+            // 液态玻璃：iOS 26 官方 `.glassEffect()` + 提亮，
+            // 与两侧圆形玻璃按钮同款亮度（浅色背景下不发黑）
             Text(title)
                 .font(.headline)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .padding(.horizontal, 18)
                 .padding(.vertical, 9)
-                .background { Capsule().glassEffect() }
+                .background {
+                    Capsule().glassEffect().brightness(0.12)
+                }
                 .allowsHitTesting(false)
 
             // 左侧组合：返回按钮 + 自定义槽位（如主页面左上角菜单），靠左对齐
