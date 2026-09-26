@@ -37,6 +37,7 @@ struct BatteryReportView: View {
                 GlassTopBar(title: "周期报告", horizontalPadding: 28,
                             leading: { GlassCircleButton(icon: "xmark") { dismiss() } })
             }
+                    .offset(y: 8)
         }
     }
 

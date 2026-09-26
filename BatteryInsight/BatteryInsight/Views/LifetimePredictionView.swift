@@ -215,6 +215,7 @@ struct LifetimePredictionView: View {
                 trailing: { GlassCircleButton(icon: "checkmark", tint: .green) { dismiss() } }
             )
         }
+                    .offset(y: 8)
     }
 
     // MARK: 状态卡（正常老化 + 双轨均衡 + 提示 + 每日次数）

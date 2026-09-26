@@ -548,6 +548,7 @@ private struct UsageDetailSheet: View {
                 GlassTopBar(title: "续航详情", horizontalPadding: 28,
                             leading: { GlassCircleButton(icon: "xmark") { dismiss() } })
             }
+                    .offset(y: 8)
         }
         .presentationDetents([.medium, .large])
     }
