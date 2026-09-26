@@ -58,13 +58,19 @@ struct RecordDetailView: View {
             title: titleText,
             showsBackButton: true,
             trailing: {
-                ShareLink(item: shareText) {
+                // 分享按钮：与左上返回按钮同款液态玻璃圆形底。
+                // 不用 ShareLink——它的默认样式会覆盖 label 的玻璃圆底，
+                // 导致右上角出现一个无底的普通图标。改用 Button + 系统分享面板。
+                Button {
+                    presentShareSheet()
+                } label: {
                     Image(systemName: "square.and.arrow.up")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(.primary)
                         .frame(width: 40, height: 40)
                         .glassCircleBackground()
                 }
+                .buttonStyle(.plain)
             }
         )
         // 复制成功的反馈用图标变化（✓）表达；部署目标 iOS 26，可用 sensoryFeedback
@@ -436,6 +442,17 @@ struct RecordDetailView: View {
         default:
             return "number"
         }
+    }
+
+    /// 弹出系统分享面板（替代 ShareLink，保证按钮走液态玻璃圆底样式）
+    @MainActor
+    private func presentShareSheet() {
+        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let root = scene.windows.first?.rootViewController else { return }
+        let sheet = UIActivityViewController(activityItems: [shareText], applicationActivities: nil)
+        sheet.popoverPresentationController?.sourceView = root.view
+        sheet.popoverPresentationController?.sourceRect = CGRect(x: root.view.bounds.midX, y: 60, width: 0, height: 0)
+        root.present(sheet, animated: true)
     }
 
     /// 分享文本：把该条记录的主要字段拼成一段可读文字
