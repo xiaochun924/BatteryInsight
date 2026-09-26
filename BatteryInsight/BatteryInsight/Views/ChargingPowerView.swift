@@ -294,13 +294,13 @@ struct ChargingPowerView: View {
                     Chart(power.live) { sample in
                         LineMark(x: .value("时间", sample.date),
                                  y: .value("充电器输入 W", sample.inputWatts))
-                            .foregroundStyle(.mwAccent)
+                            .foregroundStyle(Color.mwAccent)
                             .lineStyle(StrokeStyle(lineWidth: 2))
                             .interpolationMethod(.monotone)
                         if sample.batteryWatts > 0 {
                             LineMark(x: .value("时间", sample.date),
                                      y: .value("充入电池 W", sample.batteryWatts))
-                                .foregroundStyle(.mwBattery)
+                                .foregroundStyle(Color.mwBattery)
                                 .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
                                 .interpolationMethod(.monotone)
                         }
