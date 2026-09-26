@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import Charts
 
 /// 「电池健康」主页面，布局参考 iOS 电池健康类 App 的通用样式：
@@ -22,6 +23,10 @@ struct BatteryHomeView: View {
     /// 「导入」一步到位：直接弹系统文件管理器，不再经过中间页
     @State private var showingFileImporter = false
     @State private var showingResult = false
+    /// 右上角设置弹窗（配置快捷指令）
+    @State private var showingSettings = false
+    /// 快捷指令名称（在设置里配置；留空时「分析」回退系统文件选择器）
+    @AppStorage("battery.shortcutName") private var shortcutName = 
     /// 图表显示哪种指标。容量数据只有导入分析日志后才有，届时才出现「容量」段
     @State private var metric: ChartMetric = .health
 
@@ -112,21 +117,28 @@ struct BatteryHomeView: View {
                     .buttonStyle(.plain)
                 },
                 trailing: {
-                    Button { showingFileImporter = true } label: {
-                        Text("分析")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(.primary)
-                            .padding(.horizontal, 14)
-                            .frame(height: 40)
-                            .glassEffect(.regular.interactive(), in: .capsule)
+                    HStack(spacing: 12) {
+                        // 「分析」：已配置快捷指令 → 运行快捷指令（用户在其内选择文件并传入本 App），
+                        // 未配置 → 直接弹系统文件选择器兜底
+                        Button { openImport() } label: {
+                            Text("分析")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(.primary)
+                                .padding(.horizontal, 14)
+                                .frame(height: 40)
+                                .glassEffect(.regular.interactive(), in: .capsule)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(vm.isImporting)
+                        // 右上角设置入口：配置快捷指令名称
+                        GlassCircleButton(icon: "gearshape") { showingSettings = true }
                     }
-                    .buttonStyle(.plain)
-                    .disabled(vm.isImporting)
                 }
             )
         }
         .sheet(isPresented: $showingReport) { BatteryReportView() }
         .sheet(isPresented: $showingLifetime) { LifetimePredictionView() }
+        .sheet(isPresented: $showingSettings) { SettingsView() }
         // 直接从最顶层 VC 弹系统选择器，不再包一层 sheet——
         // 中间层白卡就是"点导入先跳白屏"的来源
         .documentPicker(
@@ -546,4 +558,20 @@ private struct ImportingOverlay: View {
         }
         .allowsHitTesting(true)
     }
+    /// 导入入口：已配置快捷指令 → 运行快捷指令（快捷指令内选择文件并打开本 App）；
+    /// 未配置或打开失败 → 直接弹系统文件选择器兜底
+    private func openImport() {
+        let name = shortcutName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else {
+            showingFileImporter = true
+            return
+        }
+        guard let encoded = name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "shortcuts://run-shortcut?name=\(encoded)") else {
+            showingFileImporter = true
+            return
+        }
+        UIApplication.shared.open(url)
+    }
+
 }
