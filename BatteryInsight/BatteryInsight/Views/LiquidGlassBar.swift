@@ -10,13 +10,17 @@ import SwiftUI
 /// - `.glassEffect(.regular.interactive(), in: .circle)`：可交互圆形按钮
 struct GlassTopBar<Leading: View, Trailing: View>: View {
     let title: String
+    /// 水平内边距：全屏页 16；sheet 弹出页加大到 28，避开 iOS 26 sheet 顶部大圆角
+    var horizontalPadding: CGFloat = 16
     @ViewBuilder var leading: () -> Leading
     @ViewBuilder var trailing: () -> Trailing
 
     init(title: String,
+         horizontalPadding: CGFloat = 16,
          @ViewBuilder leading: @escaping () -> Leading = { EmptyView() },
          @ViewBuilder trailing: @escaping () -> Trailing = { EmptyView() }) {
         self.title = title
+        self.horizontalPadding = horizontalPadding
         self.leading = leading
         self.trailing = trailing
     }
@@ -42,7 +46,7 @@ struct GlassTopBar<Leading: View, Trailing: View>: View {
             }
         }
         .frame(height: 48)
-        .padding(.horizontal, 16)
+        .padding(.horizontal, horizontalPadding)
     }
 }
 

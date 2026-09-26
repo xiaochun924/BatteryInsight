@@ -33,8 +33,8 @@ struct BatteryReportView: View {
             }
             // 液态玻璃悬浮顶栏（参考 home-inventory 官方 Liquid Glass 实现）；sheet 左上角关闭
             .toolbar(.hidden, for: .navigationBar)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                GlassTopBar(title: "周期报告",
+            .safeAreaInset(edge: .top, spacing: 8) {
+                GlassTopBar(title: "周期报告", horizontalPadding: 28,
                             leading: { GlassCircleButton(icon: "xmark") { dismiss() } })
             }
         }

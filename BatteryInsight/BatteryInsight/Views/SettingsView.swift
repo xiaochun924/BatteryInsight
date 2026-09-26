@@ -27,8 +27,9 @@ struct SettingsView: View {
             // 液态玻璃悬浮顶栏（与全 App 统一）：左上角关闭 + 右上角绿色对勾确认，
             // 与寿命预测页同款左右对称布局
             .toolbar(.hidden, for: .navigationBar)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                GlassTopBar(title: "设置",
+            .safeAreaInset(edge: .top, spacing: 8) {
+                // sheet 顶部有大圆角：加大水平边距对齐圆角，与圆角留出呼吸间距
+                GlassTopBar(title: "设置", horizontalPadding: 28,
                             leading: { GlassCircleButton(icon: "xmark") { dismiss() } },
                             trailing: { GlassCircleButton(icon: "checkmark", tint: .green) { dismiss() } })
             }

@@ -208,9 +208,9 @@ struct LifetimePredictionView: View {
         .background(Color(.systemGroupedBackground))
         // 液态玻璃悬浮顶栏（参考 home-inventory 官方 Liquid Glass 实现）；左上关闭 + 右上对勾
         .toolbar(.hidden, for: .navigationBar)
-        .safeAreaInset(edge: .top, spacing: 0) {
+        .safeAreaInset(edge: .top, spacing: 8) {
             GlassTopBar(
-                title: "寿命预测",
+                title: "寿命预测", horizontalPadding: 28,
                 leading: { GlassCircleButton(icon: "xmark") { dismiss() } },
                 trailing: { GlassCircleButton(icon: "checkmark", tint: .green) { dismiss() } }
             )
