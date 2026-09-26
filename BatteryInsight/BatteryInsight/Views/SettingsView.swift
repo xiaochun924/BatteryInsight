@@ -10,32 +10,23 @@ struct SettingsView: View {
     @AppStorage("battery.shortcutName") private var shortcutName = ""
 
     var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    TextField("快捷指令名称", text: $shortcutName)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                } header: {
-                    Text("快捷指令")
-                } footer: {
-                    Text("在「快捷指令」App 中创建一条指令：选择文件 → 打开本 App。设置名称后，点击首页右上角「分析」会直接运行该快捷指令；留空则回退为系统文件选择器。")
-                }
+        List {
+            Section {
+                TextField("快捷指令名称", text: $shortcutName)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+            } header: {
+                Text("快捷指令")
+            } footer: {
+                Text("在「快捷指令」App 中创建一条指令：选择文件 → 打开本 App。设置名称后，点击首页右上角「分析」会直接运行该快捷指令；留空则回退为系统文件选择器。")
             }
-            .listStyle(.insetGrouped)
-            .navigationBarTitleDisplayMode(.inline)
-            // 液态玻璃悬浮顶栏（与全 App 统一）：左上角关闭 + 右上角绿色对勾确认，
-            // 与寿命预测页同款左右对称布局
-            .toolbar(.hidden, for: .navigationBar)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                // sheet 顶部有大圆角：水平边距 28 避开弧线；
-                // 顶栏上移 16pt，让左右按钮垂直中心与圆角中心对齐
-                GlassTopBar(title: "设置", horizontalPadding: 28,
-                            leading: { GlassCircleButton(icon: "xmark") { dismiss() } },
-                            trailing: { GlassCircleButton(icon: "checkmark", tint: .green) { dismiss() } })
-            }
-                    .offset(y: 8)
         }
-        .presentationDetents([.medium])
+        .listStyle(.insetGrouped)
+        // 液态玻璃悬浮顶栏（与全 App 统一）；二级页左上返回
+        .toolbar(.hidden, for: .navigationBar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            GlassTopBar(title: "设置",
+                        leading: { GlassCircleButton(icon: "chevron.left") { dismiss() } })
+        }
     }
 }

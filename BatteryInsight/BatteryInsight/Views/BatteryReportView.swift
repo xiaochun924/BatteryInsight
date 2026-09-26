@@ -18,26 +18,23 @@ struct BatteryReportView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    Picker("周期", selection: $kind) {
-                        ForEach(ReportKind.allCases) { Text($0.rawValue).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
+        List {
+            Section {
+                Picker("周期", selection: $kind) {
+                    ForEach(ReportKind.allCases) { Text($0.rawValue).tag($0) }
                 }
-                .listRowBackground(Color.clear)
-                .listRowInsets(EdgeInsets())
+                .pickerStyle(.segmented)
+            }
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets())
 
-                reportSection(report)
-            }
-            // 液态玻璃悬浮顶栏（参考 home-inventory 官方 Liquid Glass 实现）；sheet 左上角关闭
-            .toolbar(.hidden, for: .navigationBar)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                GlassTopBar(title: "周期报告", horizontalPadding: 28,
-                            leading: { GlassCircleButton(icon: "xmark") { dismiss() } })
-            }
-                    .offset(y: 8)
+            reportSection(report)
+        }
+        // 液态玻璃悬浮顶栏（参考 home-inventory 官方 Liquid Glass 实现）；二级页左上返回
+        .toolbar(.hidden, for: .navigationBar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            GlassTopBar(title: "周期报告",
+                        leading: { GlassCircleButton(icon: "chevron.left") { dismiss() } })
         }
     }
 

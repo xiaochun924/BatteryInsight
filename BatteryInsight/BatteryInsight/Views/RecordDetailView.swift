@@ -68,8 +68,8 @@ struct RecordDetailView: View {
         }
         // 复制成功的反馈用图标变化（✓）表达；部署目标 iOS 26，可用 sensoryFeedback
         .sensoryFeedback(.success, trigger: copiedText)
-        // 「查看详情」：续航详情弹窗
-        .sheet(isPresented: $showUsageDetail) {
+        // 「查看详情」：续航详情 push 二级页
+        .navigationDestination(isPresented: $showUsageDetail) {
             UsageDetailSheet(analytics: analytics)
         }
         // 系统导航栏已隐藏，手动恢复右滑返回手势；
@@ -511,10 +511,9 @@ private struct UsageDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    detailRow("亮屏时长", secondsText(analytics?.screenOnSeconds), "sun.max.fill", .green)
+        List {
+            Section {
+                detailRow("亮屏时长", secondsText(analytics?.screenOnSeconds), "sun.max.fill", .green)
                     detailRow("后台唤醒", secondsText(analytics?.awakeSeconds), "moon.stars.fill", .orange)
                     detailRow("充电时长", minutesText(analytics?.chargingMinutes), "bolt.fill", .blue)
                     detailRow("未插电时长", secondsText(analytics?.unpluggedDurationSeconds), "poweroutlet.type.fill", .green)
@@ -542,15 +541,12 @@ private struct UsageDetailSheet: View {
                     }
                 }
             }
-            // 液态玻璃悬浮顶栏（参考 home-inventory 官方 Liquid Glass 实现）；左上角关闭
-            .toolbar(.hidden, for: .navigationBar)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                GlassTopBar(title: "续航详情", horizontalPadding: 28,
-                            leading: { GlassCircleButton(icon: "xmark") { dismiss() } })
-            }
-                    .offset(y: 8)
+        // 液态玻璃悬浮顶栏（参考 home-inventory 官方 Liquid Glass 实现）；二级页左上返回
+        .toolbar(.hidden, for: .navigationBar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            GlassTopBar(title: "续航详情",
+                        leading: { GlassCircleButton(icon: "chevron.left") { dismiss() } })
         }
-        .presentationDetents([.medium, .large])
     }
 
     private func secondsText(_ s: Double?) -> String {
