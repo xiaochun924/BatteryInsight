@@ -143,7 +143,7 @@ struct BatteryHomeView: View {
             )
         }
         .sheet(isPresented: $showingReport) { BatteryReportView() }
-        .sheet(isPresented: $showingLifetime) { LifetimePredictionView() }
+        .navigationDestination(isPresented: $showingLifetime) { LifetimePredictionView() }
         .sheet(isPresented: $showingSettings) { SettingsView() }
         // 直接从最顶层 VC 弹系统选择器，不再包一层 sheet——
         // 中间层白卡就是"点导入先跳白屏"的来源

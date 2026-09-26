@@ -105,7 +105,7 @@ struct TrendDetailView: View {
             GlassTopBar(title: "趋势分析",
                         leading: { GlassCircleButton(icon: "chevron.left") { dismiss() } })
         }
-        .sheet(isPresented: $showingLifetime) { LifetimePredictionView() }
+        .navigationDestination(isPresented: $showingLifetime) { LifetimePredictionView() }
         // 系统导航栏已隐藏，手动恢复右滑返回手势；
         // 用 simultaneousGesture 避免与顶栏按钮的点击手势竞争
         .simultaneousGesture(

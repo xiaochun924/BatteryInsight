@@ -206,16 +206,12 @@ struct LifetimePredictionView: View {
             .padding(.vertical, 12)
         }
         .background(Color(.systemGroupedBackground))
-        // 液态玻璃悬浮顶栏（参考 home-inventory 官方 Liquid Glass 实现）；左上关闭 + 右上对勾
+        // 液态玻璃悬浮顶栏（参考 home-inventory 官方 Liquid Glass 实现）；二级页左上返回
         .toolbar(.hidden, for: .navigationBar)
         .safeAreaInset(edge: .top, spacing: 0) {
-            GlassTopBar(
-                title: "寿命预测", horizontalPadding: 28,
-                leading: { GlassCircleButton(icon: "xmark") { dismiss() } },
-                trailing: { GlassCircleButton(icon: "checkmark", tint: .green) { dismiss() } }
-            )
+            GlassTopBar(title: "寿命预测",
+                        leading: { GlassCircleButton(icon: "chevron.left") { dismiss() } })
         }
-                    .offset(y: 8)
     }
 
     // MARK: 状态卡（正常老化 + 双轨均衡 + 提示 + 每日次数）
