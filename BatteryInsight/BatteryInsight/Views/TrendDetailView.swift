@@ -106,6 +106,16 @@ struct TrendDetailView: View {
                         leading: { GlassCircleButton(icon: "chevron.left") { dismiss() } })
         }
         .sheet(isPresented: $showingLifetime) { LifetimePredictionView() }
+        // 系统导航栏已隐藏，手动恢复右滑返回手势
+        .gesture(
+            DragGesture(minimumDistance: 25)
+                .onEnded { value in
+                    if value.translation.width > 60,
+                       abs(value.translation.width) > abs(value.translation.height) {
+                        dismiss()
+                    }
+                }
+        )
     }
 
     // MARK: - 老化状态卡

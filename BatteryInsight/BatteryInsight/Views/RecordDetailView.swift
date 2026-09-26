@@ -72,6 +72,16 @@ struct RecordDetailView: View {
         .sheet(isPresented: $showUsageDetail) {
             UsageDetailSheet(analytics: analytics)
         }
+        // 系统导航栏已隐藏，手动恢复右滑返回手势
+        .gesture(
+            DragGesture(minimumDistance: 25)
+                .onEnded { value in
+                    if value.translation.width > 60,
+                       abs(value.translation.width) > abs(value.translation.height) {
+                        dismiss()
+                    }
+                }
+        )
     }
 
     private var displayTab: Tab {

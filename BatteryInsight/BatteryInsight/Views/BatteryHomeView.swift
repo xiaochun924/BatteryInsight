@@ -25,6 +25,10 @@ struct BatteryHomeView: View {
     @State private var showingResult = false
     /// 右上角设置弹窗（配置快捷指令）
     @State private var showingSettings = false
+    /// 趋势分析页 push（与 home-inventory 一致的 navigationDestination 方式）
+    @State private var showingTrend = false
+    /// 选中的检测记录 → 详情页 push
+    @State private var selectedRecord: HealthRecord?
     /// 快捷指令名称（在设置里配置；留空时「分析」回退系统文件选择器）
     @AppStorage("battery.shortcutName") private var shortcutName = ""
     /// 图表显示哪种指标。容量数据只有导入分析日志后才有，届时才出现「容量」段
@@ -275,13 +279,16 @@ struct BatteryHomeView: View {
                 }
 
                 // 点击趋势图 → 进入独立「趋势分析」页（参考竞品截图布局）
-                NavigationLink {
-                    TrendDetailView()
+                Button {
+                    showingTrend = true
                 } label: {
                     trendChart
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .navigationDestination(isPresented: $showingTrend) {
+                    TrendDetailView()
+                }
 
                 // 底部摘要行（对应截图：「⚖️ 正常老化 · 约 2 年 9 个月到 80%」+ 右侧「详情」入口）
                 HStack(spacing: 6) {
@@ -394,16 +401,20 @@ struct BatteryHomeView: View {
         Section("检测记录（\(sortedHealth.count) 条）") {
             ForEach(reversedHealth) { record in
                 // 点任意一条记录 → push 详情页（电池数据 / 其他数据 分段）
-                NavigationLink {
-                    RecordDetailView(record: record, analytics: analyticsFor(record))
+                Button {
+                    selectedRecord = record
                 } label: {
                     recordCard(record)
                 }
+                .buttonStyle(.plain)
             }
             .onDelete { offsets in
                 offsets.map { reversedHealth[$0] }
                     .forEach { vm.deleteHealth($0) }
             }
+        }
+        .navigationDestination(item: $selectedRecord) { record in
+            RecordDetailView(record: record, analytics: analyticsFor(record))
         }
     }
 
