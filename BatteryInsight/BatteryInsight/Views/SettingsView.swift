@@ -24,11 +24,13 @@ struct SettingsView: View {
             }
             .listStyle(.insetGrouped)
             .navigationBarTitleDisplayMode(.inline)
-            // 液态玻璃悬浮顶栏（与全 App 统一）；左上角关闭
+            // 液态玻璃悬浮顶栏（与全 App 统一）：左上角关闭 + 右上角绿色对勾确认，
+            // 与寿命预测页同款左右对称布局
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 GlassTopBar(title: "设置",
-                            leading: { GlassCircleButton(icon: "xmark") { dismiss() } })
+                            leading: { GlassCircleButton(icon: "xmark") { dismiss() } },
+                            trailing: { GlassCircleButton(icon: "checkmark", tint: .green) { dismiss() } })
             }
         }
         .presentationDetents([.medium])
