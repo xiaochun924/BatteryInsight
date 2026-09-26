@@ -20,6 +20,7 @@ struct RecordDetailView: View {
     @State private var tab: Tab = .battery
     @State private var copiedText: String?
     @State private var showUsageDetail = false
+    @Environment(\.dismiss) private var dismiss
 
     enum Tab: String, CaseIterable, Identifiable {
         case battery = "电池数据"
