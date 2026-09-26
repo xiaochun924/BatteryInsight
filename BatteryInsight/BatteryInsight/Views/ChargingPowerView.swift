@@ -3,113 +3,23 @@ import SwiftUI
 /// 「充电功率」页面（Tab 2，与「电池健康」分开显示）。
 ///
 /// iOS 不开放第三方 App 读取真实充电功率瓦数，这里用「可观测数据估算 + 日志实测」：
-/// 1. **实时充电检测**：电量环 + 充电状态 + 耗电速率 + 剩余时长 + 进行中会话进度
-/// 2. **充电功率检测**：当前功率（充电速度 × 电池容量 × 标称电压 估算）
+/// 1. **充电功率检测**：当前功率（充电速度 × 电池容量 × 标称电压 估算）
 ///    + 最大充电功率（分析日志实测：峰值充电电流 × 峰值电压）
 struct ChargingPowerView: View {
     @EnvironmentObject private var vm: BatteryViewModel
 
     var body: some View {
         Group {
-            if !vm.hasRealLevel && vm.latestAnalytics == nil && !vm.sessions.contains(where: { $0.isActive }) {
+            if vm.latestAnalytics == nil && !vm.sessions.contains(where: { $0.isActive }) {
                 emptyState
             } else {
                 List {
-                    chargingCard
                     powerSection
                 }
             }
         }
         // 液态玻璃悬浮顶栏：居中玻璃胶囊标题（无返回按钮，本页是根页面）
         .liquidGlassTopBar(title: "充电功率", showsBackButton: false)
-    }
-
-    // MARK: - 实时充电检测卡
-
-    /// 实时电量、充电状态、耗电速率、剩余可用时长，以及进行中的充电会话。
-    /// 数据来自 `BatteryMonitor` 的前台采样（模拟器/后台无数据时显示「--」）。
-    private var chargingCard: some View {
-        Section {
-            VStack(spacing: 14) {
-                // 电量环 + 状态
-                HStack(spacing: 16) {
-                    ZStack {
-                        Circle()
-                            .stroke(Color.green.opacity(0.15), lineWidth: 10)
-                        Circle()
-                            .trim(from: 0, to: batteryLevelFraction)
-                            .stroke(
-                                stateGradient,
-                                style: StrokeStyle(lineWidth: 10, lineCap: .round)
-                            )
-                            .rotationEffect(.degrees(-90))
-                        VStack(spacing: 2) {
-                            Image(systemName: vm.isCharging ? "bolt.fill" : "battery.50")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(vm.isCharging ? .yellow : .green)
-                            Text(batteryLevelText)
-                                .font(.title2.bold())
-                                .monospacedDigit()
-                        }
-                    }
-                    .frame(width: 96, height: 96)
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        // 充电状态
-                        Label(vm.stateText, systemImage: vm.state.symbolName)
-                            .font(.headline)
-                            .foregroundStyle(vm.isCharging ? .yellow : .green)
-                        // 充电进度 / 耗电速率 / 剩余时长
-                        if vm.isCharging {
-                            if let active = vm.activeChargingSession {
-                                Label("充电中 \(active.gainedPercent, format: .number.precision(.fractionLength(0)))%",
-                                      systemImage: "arrow.up.circle")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-                        } else {
-                            if let rate = vm.drainRate {
-                                Label("耗电 \(rate, format: .number.precision(.fractionLength(1)))%/小时",
-                                      systemImage: "arrow.down.circle")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-                            if let hours = vm.remainingHours {
-                                Label("约剩 \(hours, format: .number.precision(.fractionLength(1))) 小时",
-                                      systemImage: "timer")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                    Spacer(minLength: 0)
-                }
-            }
-            .padding(.vertical, 6)
-        } header: {
-            Text("实时充电检测")
-        } footer: {
-            Text("电量与状态来自系统 UIDevice：仅前台采样、系统对第三方精度约 ±5%，显示与状态栏可能有 1–5% 偏差；耗电速率与剩余时长由近期采样估算。")
-        }
-    }
-
-    /// 电量环填充比例（0~1；无真实电量时为 0）
-    private var batteryLevelFraction: Double {
-        guard vm.hasRealLevel else { return 0 }
-        return min(max(vm.level, 0), 1)
-    }
-
-    /// 电量环文案（无真实电量时显示「--」）
-    private var batteryLevelText: String {
-        vm.levelPercent.map { "\(Int($0.rounded()))%" } ?? "--"
-    }
-
-    /// 电量环渐变色：充电黄色，放电/待机绿色
-    private var stateGradient: LinearGradient {
-        if vm.isCharging {
-            return LinearGradient(colors: [.yellow, .orange], startPoint: .topLeading, endPoint: .bottomTrailing)
-        }
-        return LinearGradient(colors: [.green, .teal], startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 
     // MARK: - 充电功率检测
