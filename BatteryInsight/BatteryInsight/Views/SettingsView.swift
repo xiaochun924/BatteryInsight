@@ -33,7 +33,7 @@ struct SettingsView: View {
                 GlassTopBar(title: "设置", horizontalPadding: 28,
                             leading: { GlassCircleButton(icon: "xmark") { dismiss() } },
                             trailing: { GlassCircleButton(icon: "checkmark", tint: .green) { dismiss() } })
-                    .offset(y: -16)
+                    .offset(y: -8)
             }
         }
         .presentationDetents([.medium])

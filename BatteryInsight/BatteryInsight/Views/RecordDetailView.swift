@@ -547,7 +547,7 @@ private struct UsageDetailSheet: View {
             .safeAreaInset(edge: .top, spacing: 0) {
                 GlassTopBar(title: "续航详情", horizontalPadding: 28,
                             leading: { GlassCircleButton(icon: "xmark") { dismiss() } })
-                    .offset(y: -16)
+                    .offset(y: -8)
             }
         }
         .presentationDetents([.medium, .large])
