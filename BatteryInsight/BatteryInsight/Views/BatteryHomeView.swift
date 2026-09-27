@@ -8,7 +8,7 @@ import Charts
 /// 2. **趋势图表卡**：「健康 / 容量」切换 + 衰减速率 + 折线图（逐点数值标签）
 ///    + Y 轴随数据自适应（健康度 100% 上下也能完整显示，参考主流电池工具布局）
 ///    + 底部摘要行（预计多久降到 80% + 详情入口）
-/// 3. **检测记录**：每天一张卡片（健康 %、循环次数、评级徽章、日期）
+/// 3. **检测记录**：每天一张独立圆角卡片底色（健康 %、循环次数、评级徽章、日期）
 ///
 /// 原「电量趋势 / 趋势统计」（电量 % 曲线及其统计）已按需求删除——
 /// 电量起伏与健康度无关，真正有价值的是容量随时间的衰减。
@@ -429,12 +429,14 @@ struct BatteryHomeView: View {
                     recordCard(record)
                 }
                 .buttonStyle(.plain)
+                // 每条记录已有独立卡片底色，隐藏行间分隔线
+                .listRowSeparator(.hidden)
                 // zoom 转场源：记录卡放大进入详情，返回时缩回。
                 // 注意：contentShape 必须声明在 label 内容层（recordCard 内），
                 // 不能加在 Button 上——matchedTransitionSource 会把 Button 的
                 // 命中区域收缩到内容边界，加在 Button 上空白处依然点不中
                 .matchedTransitionSource(id: record.id, in: namespace) { source in
-                    source.clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    source.clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
             }
             .onDelete { offsets in
@@ -521,7 +523,11 @@ struct BatteryHomeView: View {
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .padding(.vertical, 6)
+        // 内容四周留白，卡片底色包裹后文字与圆角边缘有呼吸感
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        // 每一条记录独立的圆角卡片底色（系统四级色，深色/浅色自适应），提升可读性
+        .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         // 整卡（含空白区域）可点击：命中形状声明在内容层（与趋势图按钮同写法）。
         // matchedTransitionSource 会按内容 bounds 收缩 Button 命中区，
         // 在 label 内声明 Rectangle() 才能覆盖撑满整行的空白区域
