@@ -14,6 +14,8 @@ import Charts
 /// 电量起伏与健康度无关，真正有价值的是容量随时间的衰减。
 /// 原「充电检测」实时区块已拆分到「充电功率」Tab（ChargingPowerView），
 /// 本页只保留与健康度强相关的静态数据。
+/// 页面转场动画：记录详情/趋势分析从卡片 zoom 放大打开、反向缩回关闭；
+/// 周期报告/寿命预测淡入淡出。
 struct BatteryHomeView: View {
     @EnvironmentObject private var vm: BatteryViewModel
 
@@ -29,6 +31,8 @@ struct BatteryHomeView: View {
     @State private var showingTrend = false
     /// 选中的检测记录 → 详情页 push
     @State private var selectedRecord: HealthRecord?
+    /// 页面转场命名空间：记录详情/趋势分析 zoom 打开/关闭动画
+    @Namespace private var namespace
     /// 快捷指令名称（在设置里配置；留空时「分析」回退系统文件选择器）
     @AppStorage("battery.shortcutName") private var shortcutName = ""
     /// 图表显示哪种指标。容量数据只有导入分析日志后才有，届时才出现「容量」段
@@ -142,8 +146,14 @@ struct BatteryHomeView: View {
                 }
             )
         }
-        .navigationDestination(isPresented: $showingReport) { BatteryReportView() }
-        .navigationDestination(isPresented: $showingLifetime) { LifetimePredictionView() }
+        // 周期报告：淡入打开 / 淡出关闭（无对应源卡片，用统一淡变）
+        .navigationDestination(isPresented: $showingReport) {
+            BatteryReportView().navigationTransition(.fade)
+        }
+        // 寿命预测：淡入打开 / 淡出关闭（「详情」胶囊按钮触发）
+        .navigationDestination(isPresented: $showingLifetime) {
+            LifetimePredictionView().navigationTransition(.fade)
+        }
         .sheet(isPresented: $showingSettings) { SettingsView() }
         // 直接从最顶层 VC 弹系统选择器，不再包一层 sheet——
         // 中间层白卡就是"点导入先跳白屏"的来源
@@ -280,7 +290,7 @@ struct BatteryHomeView: View {
                     Spacer()
                 }
 
-                // 点击趋势图 → 进入独立「趋势分析」页（参考竞品截图布局）
+                // 点击趋势图 → 进入独立「趋势分析」页（参考竞品截图布局），zoom 转场
                 Button {
                     showingTrend = true
                 } label: {
@@ -288,8 +298,13 @@ struct BatteryHomeView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                // zoom 转场源：趋势图放大进入分析页，返回时缩回
+                .matchedTransitionSource(id: "trend-chart", in: namespace) { source in
+                    source.clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
                 .navigationDestination(isPresented: $showingTrend) {
                     TrendDetailView()
+                        .navigationTransition(.zoom(sourceID: "trend-chart", in: namespace))
                 }
 
                 // 底部摘要行（对应截图：「⚖️ 正常老化 · 约 2 年 9 个月到 80%」+ 右侧「详情」入口）
@@ -402,13 +417,17 @@ struct BatteryHomeView: View {
     private var recordsSection: some View {
         Section("检测记录（\(sortedHealth.count) 条）") {
             ForEach(reversedHealth) { record in
-                // 点任意一条记录 → push 详情页（电池数据 / 其他数据 分段）
+                // 点任意一条记录 → push 详情页（电池数据 / 其他数据 分段），zoom 转场
                 Button {
                     selectedRecord = record
                 } label: {
                     recordCard(record)
                 }
                 .buttonStyle(.plain)
+                // zoom 转场源：记录卡放大进入详情，返回时缩回
+                .matchedTransitionSource(id: record.id, in: namespace) { source in
+                    source.clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
             }
             .onDelete { offsets in
                 offsets.map { reversedHealth[$0] }
@@ -417,6 +436,7 @@ struct BatteryHomeView: View {
         }
         .navigationDestination(item: $selectedRecord) { record in
             RecordDetailView(record: record, analytics: analyticsFor(record))
+                .navigationTransition(.zoom(sourceID: record.id, in: namespace))
         }
     }
 
