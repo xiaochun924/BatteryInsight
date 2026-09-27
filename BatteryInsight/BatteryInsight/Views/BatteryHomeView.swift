@@ -5,8 +5,8 @@ import Charts
 /// 「电池健康」主页面，布局参考 iOS 电池健康类 App 的通用样式：
 ///
 /// 1. **设备信息卡**：一行一条（机型/系统、健康度、循环、温度、容量、最近检测）
-/// 2. **趋势图表卡**：「健康 / 容量」切换 + 衰减速率 + 干净折线图（隐藏日期/数值刻度，
-///    只显示最近 7 次记录，绿色折线加粗，无逐点标签）+ Y 轴随数据自适应
+/// 2. **趋势图表卡**：「健康 / 容量」切换 + 衰减速率 + 折线图（隐藏日期/数值刻度，
+///    只显示最近 7 次记录，绿色折线加粗，逐点胶囊数值标签）+ Y 轴随数据自适应
 ///    + 底部摘要行（预计多久降到 80% + 详情入口）
 /// 3. **检测记录**：每天一张独立圆角卡片底色（健康 %、循环次数、评级徽章、日期）
 ///
@@ -360,14 +360,27 @@ struct BatteryHomeView: View {
                     y: .value(metric == .health ? "健康度" : "容量", point.value)
                 )
                 .foregroundStyle(Color.green)
+                // 每个数据点上方标数值胶囊；已限最近 7 次记录，点数 ≤ 7 全部标注，不会糊
+                .annotation(position: .top, spacing: 6) {
+                    Text(label(for: point.value))
+                        .font(.caption2.bold())
+                        .foregroundStyle(.green)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(.thinMaterial, in: Capsule())
+                }
             }
         }
         // Y 轴随数据自适应（截图布局）：健康度 100% 上下也能完整显示
         .chartYScale(domain: yDomain(for: points))
-        // 隐藏日期/数值刻度，只留干净绿色折线
+        // 隐藏日期/数值刻度，只留干净折线 + 数值胶囊
         .chartXAxis(.hidden)
         .chartYAxis(.hidden)
         .frame(height: 180)
+    }
+
+    private func label(for value: Double) -> String {
+        metric == .health ? String(format: "%.1f", value) : "\(Int(value))"
     }
 
     /// Y 轴范围：健康度与容量都按数据自适应，并留出上下余量。
