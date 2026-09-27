@@ -429,9 +429,10 @@ struct BatteryHomeView: View {
                     recordCard(record)
                 }
                 .buttonStyle(.plain)
-                // 整卡（含空白区域）可点击：iOS 26 hit-test 默认只认内容区，补全矩形命中区
-                .contentShape(Rectangle())
-                // zoom 转场源：记录卡放大进入详情，返回时缩回
+                // zoom 转场源：记录卡放大进入详情，返回时缩回。
+                // 注意：contentShape 必须声明在 label 内容层（recordCard 内），
+                // 不能加在 Button 上——matchedTransitionSource 会把 Button 的
+                // 命中区域收缩到内容边界，加在 Button 上空白处依然点不中
                 .matchedTransitionSource(id: record.id, in: namespace) { source in
                     source.clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
@@ -521,6 +522,10 @@ struct BatteryHomeView: View {
             .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .padding(.vertical, 6)
+        // 整卡（含空白区域）可点击：命中形状声明在内容层（与趋势图按钮同写法）。
+        // matchedTransitionSource 会按内容 bounds 收缩 Button 命中区，
+        // 在 label 内声明 Rectangle() 才能覆盖撑满整行的空白区域
+        .contentShape(Rectangle())
     }
 
     /// 当天亮屏时长文案：「X时Y分」—— 文件抓取到的当天亮屏累计时长
