@@ -36,6 +36,17 @@ struct BatteryReportView: View {
             GlassTopBar(title: "周期报告",
                         leading: { GlassCircleButton(icon: "chevron.left") { dismiss() } })
         }
+        // 系统导航栏已隐藏，手动恢复右滑返回手势；
+        // 用 simultaneousGesture 避免与顶栏按钮的点击手势竞争
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 25)
+                .onEnded { value in
+                    if value.translation.width > 60,
+                       abs(value.translation.width) > abs(value.translation.height) {
+                        dismiss()
+                    }
+                }
+        )
     }
 
     private var report: BatteryReport {
