@@ -526,8 +526,9 @@ struct BatteryHomeView: View {
         // 内容四周留白，卡片底色包裹后文字与圆角边缘有呼吸感
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
-        // 每一条记录独立的圆角卡片底色（系统四级色，深色/浅色自适应），提升可读性
-        .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        // 每一条记录独立的圆角卡片底色（系统四级色，透明度降到 0.3：浅色下接近
+        // 极浅灰、深色下微微提亮，不会发黑），提升可读性
+        .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         // 整卡（含空白区域）可点击：命中形状声明在内容层（与趋势图按钮同写法）。
         // matchedTransitionSource 会按内容 bounds 收缩 Button 命中区，
         // 在 label 内声明 Rectangle() 才能覆盖撑满整行的空白区域
