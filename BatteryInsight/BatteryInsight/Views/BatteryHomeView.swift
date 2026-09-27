@@ -429,6 +429,8 @@ struct BatteryHomeView: View {
                     recordCard(record)
                 }
                 .buttonStyle(.plain)
+                // 整卡（含空白区域）可点击：iOS 26 hit-test 默认只认内容区，补全矩形命中区
+                .contentShape(Rectangle())
                 // zoom 转场源：记录卡放大进入详情，返回时缩回
                 .matchedTransitionSource(id: record.id, in: namespace) { source in
                     source.clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
