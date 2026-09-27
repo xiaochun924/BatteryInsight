@@ -289,7 +289,7 @@ struct TrendDetailView: View {
         }
     }
 
-    /// 折线图：绿色线 + 数据点。
+    /// 折线图：绿色加粗折线 + 数据点。
     /// 只显示最近 7 次记录（由调用方传入），隐藏 XY 轴坐标值（刻度杂乱观感差）
     private func trendChart(points: [(date: Date, value: Double)],
                             domain: ClosedRange<Double>) -> some View {
@@ -301,6 +301,8 @@ struct TrendDetailView: View {
                 )
                 .foregroundStyle(Color.green)
                 .interpolationMethod(.monotone)
+                // 与主页趋势图一致的加粗折线（圆头圆角连接）
+                .lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
 
                 PointMark(
                     x: .value("日期", point.date),
