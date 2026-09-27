@@ -148,11 +148,11 @@ struct BatteryHomeView: View {
         }
         // 周期报告：淡入打开 / 淡出关闭（无对应源卡片，用统一淡变）
         .navigationDestination(isPresented: $showingReport) {
-            BatteryReportView().navigationTransition(.fade)
+            BatteryReportView().navigationTransition(FadeNavigationTransition())
         }
         // 寿命预测：淡入打开 / 淡出关闭（「详情」胶囊按钮触发）
         .navigationDestination(isPresented: $showingLifetime) {
-            LifetimePredictionView().navigationTransition(.fade)
+            LifetimePredictionView().navigationTransition(FadeNavigationTransition())
         }
         .sheet(isPresented: $showingSettings) { SettingsView() }
         // 直接从最顶层 VC 弹系统选择器，不再包一层 sheet——
@@ -582,6 +582,33 @@ struct BatteryHomeView: View {
         UIApplication.shared.open(url)
     }
 
+}
+
+// MARK: - 淡入淡出导航转场
+
+/// push 时新页淡入、pop 时旧页淡出。
+/// 说明：系统内置 NavigationTransition 只有 .automatic / .zoom(sourceID:in:)，
+/// 没有 .fade（网上流传的 .fade 是第三方库 API；iOS 27 才新增内置 crossFade）。
+/// 这里按 NavigationTransition 协议自定义实现淡入淡出。
+private struct FadeNavigationTransition: NavigationTransition {
+    var body: some NavigationTransition {
+        NavigationTransition { context in
+            switch context.operation {
+            case .push:
+                context.top.animation { view in
+                    view.opacity(0)
+                }
+            case .pop:
+                context.top.animation { view in
+                    view.opacity(0)
+                }
+            default:
+                context.top.animation { view in
+                    view.opacity(0)
+                }
+            }
+        }
+    }
 }
 
 // MARK: - 解析中遮罩
