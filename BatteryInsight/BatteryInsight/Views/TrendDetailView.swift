@@ -4,7 +4,7 @@ import Charts
 /// 趋势分析页（点击主页趋势图进入）。
 /// 参考竞品「趋势分析」截图布局：
 /// - 老化状态卡：正常老化 · 约 X 年 X 个月到 80%（右侧「详情」弹寿命预测）
-/// - 电池健康度趋势 / 电池容量趋势 两张折线图
+/// - 电池健康度趋势 / 电池容量趋势 两张折线图（只显示最近 7 次记录，隐藏 XY 轴坐标值）
 /// - 趋势分析数据：时间跨度 / 数据点数量 / 健康度变化 / 容量变化 / 平均·最高·最低
 /// 竞品截图中无真实数据源的项目（电池周报 / 月报）不实现。
 struct TrendDetailView: View {
@@ -12,6 +12,9 @@ struct TrendDetailView: View {
 
     @State private var showingLifetime = false
     @Environment(\.dismiss) private var dismiss
+
+    /// 只显示最近 7 次记录（图表数据点，按日期升序）
+    private let recentCount = 7
 
     private var sortedHealth: [HealthRecord] {
         vm.healthRecords.sorted { $0.date < $1.date }
@@ -21,7 +24,7 @@ struct TrendDetailView: View {
         vm.analyticsRecords.sorted { $0.date < $1.date }
     }
 
-    /// 健康度数据点（同一天多条只保留最后一条，避免重复 ID）
+    /// 健康度数据点（同一天多条只保留最后一条，避免重复 ID；图表只用最近 7 条）
     private var healthPoints: [(date: Date, value: Double)] {
         var byDay: [Date: (date: Date, value: Double)] = [:]
         for r in sortedHealth {
@@ -31,7 +34,7 @@ struct TrendDetailView: View {
         return byDay.values.sorted { $0.date < $1.date }
     }
 
-    /// 容量数据点（最大容量 mAh，同天去重）
+    /// 容量数据点（最大容量 mAh，同天去重；图表只用最近 7 条）
     private var capacityPoints: [(date: Date, value: Double)] {
         var byDay: [Date: (date: Date, value: Double)] = [:]
         for r in sortedAnalytics {
@@ -40,6 +43,16 @@ struct TrendDetailView: View {
             byDay[day] = (r.date, Double(c))
         }
         return byDay.values.sorted { $0.date < $1.date }
+    }
+
+    /// 图表实际渲染的健康度点：最近 7 次记录
+    private var chartHealthPoints: [(date: Date, value: Double)] {
+        Array(healthPoints.suffix(recentCount))
+    }
+
+    /// 图表实际渲染的容量点：最近 7 次记录
+    private var chartCapacityPoints: [(date: Date, value: Double)] {
+        Array(capacityPoints.suffix(recentCount))
     }
 
     /// 时间跨度（首尾日期间隔天数 +1，截图「14 天」）
@@ -162,8 +175,8 @@ struct TrendDetailView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            trendChart(points: healthPoints,
-                       domain: yDomain(healthPoints, pad: 1.0, minSpan: 2.0))
+            trendChart(points: chartHealthPoints,
+                       domain: yDomain(chartHealthPoints, pad: 1.0, minSpan: 2.0))
             .frame(height: 200)
         }
         .padding(14)
@@ -182,8 +195,8 @@ struct TrendDetailView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            trendChart(points: capacityPoints,
-                       domain: yDomain(capacityPoints, pad: 5.0, minSpan: 20.0))
+            trendChart(points: chartCapacityPoints,
+                       domain: yDomain(chartCapacityPoints, pad: 5.0, minSpan: 20.0))
             .frame(height: 200)
         }
         .padding(14)
@@ -276,7 +289,8 @@ struct TrendDetailView: View {
         }
     }
 
-    /// 折线图：绿色线 + 数据点。不显示点旁数值标注（点一多就重叠、首尾标签溢出卡片边缘，观感差）
+    /// 折线图：绿色线 + 数据点。
+    /// 只显示最近 7 次记录（由调用方传入），隐藏 XY 轴坐标值（刻度杂乱观感差）
     private func trendChart(points: [(date: Date, value: Double)],
                             domain: ClosedRange<Double>) -> some View {
         Chart {
@@ -296,9 +310,8 @@ struct TrendDetailView: View {
             }
         }
         .chartYScale(domain: domain)
-        .chartXAxis {
-            AxisMarks(values: .automatic(desiredCount: 4))
-        }
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
     }
 
     /// Y 轴范围：数据自适应 + 上下余量；数值相同（贴成一条线）时撑开最小跨度。
