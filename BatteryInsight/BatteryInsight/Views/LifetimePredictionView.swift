@@ -212,6 +212,17 @@ struct LifetimePredictionView: View {
             GlassTopBar(title: "寿命预测",
                         leading: { GlassCircleButton(icon: "chevron.left") { dismiss() } })
         }
+        // 系统导航栏已隐藏，手动恢复右滑返回手势；
+        // 用 simultaneousGesture 避免与顶栏按钮的点击手势竞争
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 25)
+                .onEnded { value in
+                    if value.translation.width > 60,
+                       abs(value.translation.width) > abs(value.translation.height) {
+                        dismiss()
+                    }
+                }
+        )
     }
 
     // MARK: 状态卡（正常老化 + 双轨均衡 + 提示 + 每日次数）
