@@ -526,9 +526,17 @@ struct BatteryHomeView: View {
         // 内容四周留白，卡片底色包裹后文字与圆角边缘有呼吸感
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
-        // 每一条记录独立的圆角卡片底色（纯 .quaternary 最浅档，浅色/深色下都是
-        // 极淡的底色，保证可读性又不显黑），提升可读性
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        // 每一条记录独立的磨砂玻璃卡片（重构：不再用单色平铺——纯色底色调深了显黑、
+        // 调浅了看不见，两头都不好看）。改用 ultraThinMaterial 微透明白底（深浅模式
+        // 自适应、通透不显黑）+ 系统分隔线细描边勾出卡片轮廓，与顶部液态玻璃风格统一
+        .background {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(.ultraThinMaterial)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(.separator.opacity(0.5), lineWidth: 1)
+        }
         // 整卡（含空白区域）可点击：命中形状声明在内容层（与趋势图按钮同写法）。
         // matchedTransitionSource 会按内容 bounds 收缩 Button 命中区，
         // 在 label 内声明 Rectangle() 才能覆盖撑满整行的空白区域
