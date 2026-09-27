@@ -6,7 +6,7 @@ import Charts
 /// - 老化状态卡：正常老化 · 约 X 年 X 个月到 80%（右侧「详情」弹寿命预测）
 /// - 电池健康度趋势 / 电池容量趋势 两张折线图
 /// - 趋势分析数据：时间跨度 / 数据点数量 / 健康度变化 / 容量变化 / 平均·最高·最低
-/// 竞品截图中无真实数据源的项（电池周报 / 月报）不实现。
+/// 竞品截图中无真实数据源的项目（电池周报 / 月报）不实现。
 struct TrendDetailView: View {
     @EnvironmentObject private var vm: BatteryViewModel
 
@@ -163,7 +163,6 @@ struct TrendDetailView: View {
                     .foregroundStyle(.secondary)
             }
             trendChart(points: healthPoints,
-                       format: { String(format: "%.2f", $0) },
                        domain: yDomain(healthPoints, pad: 1.0, minSpan: 2.0))
             .frame(height: 200)
         }
@@ -184,7 +183,6 @@ struct TrendDetailView: View {
                     .foregroundStyle(.secondary)
             }
             trendChart(points: capacityPoints,
-                       format: { "\(Int($0))" },
                        domain: yDomain(capacityPoints, pad: 5.0, minSpan: 20.0))
             .frame(height: 200)
         }
@@ -278,9 +276,8 @@ struct TrendDetailView: View {
         }
     }
 
-    /// 折线图：绿色线 + 逐点数值标签（点太多时只标首尾）
+    /// 折线图：绿色线 + 数据点。不显示点旁数值标注（点一多就重叠、首尾标签溢出卡片边缘，观感差）
     private func trendChart(points: [(date: Date, value: Double)],
-                            format: @escaping (Double) -> String,
                             domain: ClosedRange<Double>) -> some View {
         Chart {
             ForEach(points, id: \.date) { point in
@@ -296,18 +293,6 @@ struct TrendDetailView: View {
                     y: .value("值", point.value)
                 )
                 .foregroundStyle(Color.green)
-                .annotation(position: .top, spacing: 6) {
-                    if points.count <= 8
-                        || point.date == points.first?.date
-                        || point.date == points.last?.date {
-                        Text(format(point.value))
-                            .font(.caption2.bold())
-                            .foregroundStyle(.green)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(.thinMaterial, in: Capsule())
-                    }
-                }
             }
         }
         .chartYScale(domain: domain)
