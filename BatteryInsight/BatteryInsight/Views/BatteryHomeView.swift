@@ -5,8 +5,8 @@ import Charts
 /// 「电池健康」主页面，布局参考 iOS 电池健康类 App 的通用样式：
 ///
 /// 1. **设备信息卡**：一行一条（机型/系统、健康度、循环、温度、容量、最近检测）
-/// 2. **趋势图表卡**：「健康 / 容量」切换 + 衰减速率 + 折线图（逐点数值标签）
-///    + Y 轴随数据自适应（健康度 100% 上下也能完整显示，参考主流电池工具布局）
+/// 2. **趋势图表卡**：「健康 / 容量」切换 + 衰减速率 + 干净折线图（隐藏日期/数值刻度，
+///    只显示最近 7 次记录，绿色折线加粗，无逐点标签）+ Y 轴随数据自适应
 ///    + 底部摘要行（预计多久降到 80% + 详情入口）
 /// 3. **检测记录**：每天一张独立圆角卡片底色（健康 %、循环次数、评级徽章、日期）
 ///
@@ -70,7 +70,8 @@ struct BatteryHomeView: View {
     }
 
     /// 图表数据点。同一天可能有多条记录（手动连加、重复导入），
-    /// 按天去重（保留当天最后一条），避免 ForEach 出现重复 ID
+    /// 按天去重（保留当天最后一条），避免 ForEach 出现重复 ID。
+    /// 图表只显示最近 7 次记录（干净折线，不堆历史远点）
     private var chartPoints: [(date: Date, value: Double)] {
         let raw: [(Date, Double)]
         switch metric {
@@ -86,7 +87,7 @@ struct BatteryHomeView: View {
             let day = Calendar.current.startOfDay(for: point.0)
             byDay[day] = (point.0, point.1)
         }
-        return byDay.values.sorted { $0.date < $1.date }
+        return Array(byDay.values.sorted { $0.date < $1.date }.suffix(7))
     }
 
     var body: some View {
@@ -351,40 +352,25 @@ struct BatteryHomeView: View {
                 )
                 .foregroundStyle(Color.green)
                 .interpolationMethod(.monotone)
+                // 绿色折线加粗（圆头圆角连接，观感干净）
+                .lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
 
                 PointMark(
                     x: .value("日期", point.date),
                     y: .value(metric == .health ? "健康度" : "容量", point.value)
                 )
                 .foregroundStyle(Color.green)
-                // 对应截图里每个点上方/下方的数值标签；点太多时只标首尾，避免糊成一团
-                .annotation(position: .top, spacing: 6) {
-                    if points.count <= 8
-                        || point.date == points.first?.date
-                        || point.date == points.last?.date {
-                        Text(label(for: point.value))
-                            .font(.caption2.bold())
-                            .foregroundStyle(.green)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(.thinMaterial, in: Capsule())
-                    }
-                }
             }
         }
         // Y 轴随数据自适应（截图布局）：健康度 100% 上下也能完整显示
         .chartYScale(domain: yDomain(for: points))
-        .chartXAxis {
-            AxisMarks(values: .automatic(desiredCount: 4))
-        }
+        // 隐藏日期/数值刻度，只留干净绿色折线
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
         .frame(height: 180)
     }
 
-    private func label(for value: Double) -> String {
-        metric == .health ? String(format: "%.1f", value) : "\(Int(value))"
-    }
-
-    /// Y 轴范围：健康度与容量都按数据自适应，并留出上下余量（也给标签留空间）。
+    /// Y 轴范围：健康度与容量都按数据自适应，并留出上下余量。
     ///
     /// 健康度常见 100% 上下（出厂容量是标称值，实际电芯存在正公差），
     /// 不再固定 70~100——否则 101.x 的数据点会被挤出图表看不见。
