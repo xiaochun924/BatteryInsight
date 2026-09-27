@@ -15,7 +15,7 @@ import Charts
 /// 原「充电检测」实时区块已拆分到「充电功率」Tab（ChargingPowerView），
 /// 本页只保留与健康度强相关的静态数据。
 /// 页面转场动画：记录详情/趋势分析从卡片 zoom 放大打开、反向缩回关闭；
-/// 周期报告/寿命预测淡入淡出。
+/// 寿命预测从「详情」胶囊 zoom 打开；周期报告走系统默认推入。
 struct BatteryHomeView: View {
     @EnvironmentObject private var vm: BatteryViewModel
 
@@ -31,7 +31,7 @@ struct BatteryHomeView: View {
     @State private var showingTrend = false
     /// 选中的检测记录 → 详情页 push
     @State private var selectedRecord: HealthRecord?
-    /// 页面转场命名空间：记录详情/趋势分析 zoom 打开/关闭动画
+    /// 页面转场命名空间：记录详情/趋势分析/寿命预测 zoom 打开/关闭动画
     @Namespace private var namespace
     /// 快捷指令名称（在设置里配置；留空时「分析」回退系统文件选择器）
     @AppStorage("battery.shortcutName") private var shortcutName = ""
@@ -146,13 +146,14 @@ struct BatteryHomeView: View {
                 }
             )
         }
-        // 周期报告：淡入打开 / 淡出关闭（无对应源卡片，用统一淡变）
+        // 周期报告：顶栏菜单入口无源卡片，走系统默认推入动画
         .navigationDestination(isPresented: $showingReport) {
-            BatteryReportView().navigationTransition(FadeNavigationTransition())
+            BatteryReportView()
         }
-        // 寿命预测：淡入打开 / 淡出关闭（「详情」胶囊按钮触发）
+        // 寿命预测：从「详情」胶囊 zoom 放大打开 / 缩回关闭
         .navigationDestination(isPresented: $showingLifetime) {
-            LifetimePredictionView().navigationTransition(FadeNavigationTransition())
+            LifetimePredictionView()
+                .navigationTransition(.zoom(sourceID: "lifetime-summary", in: namespace))
         }
         .sheet(isPresented: $showingSettings) { SettingsView() }
         // 直接从最顶层 VC 弹系统选择器，不再包一层 sheet——
@@ -318,7 +319,7 @@ struct BatteryHomeView: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    // 「详情」始终可点：弹出寿命预测界面（截图样式）
+                    // 「详情」始终可点：弹出寿命预测界面（截图样式），zoom 转场
                     Button { showingLifetime = true } label: {
                         Text("详情")
                             .font(.footnote.bold())
@@ -327,6 +328,10 @@ struct BatteryHomeView: View {
                             .background(.quaternary, in: Capsule())
                     }
                     .buttonStyle(.plain)
+                    // zoom 转场源：「详情」胶囊放大进入寿命预测页，返回时缩回
+                    .matchedTransitionSource(id: "lifetime-summary", in: namespace) { source in
+                        source.clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
                 }
                 .padding(.top, 2)
             }
@@ -582,33 +587,6 @@ struct BatteryHomeView: View {
         UIApplication.shared.open(url)
     }
 
-}
-
-// MARK: - 淡入淡出导航转场
-
-/// push 时新页淡入、pop 时旧页淡出。
-/// 说明：系统内置 NavigationTransition 只有 .automatic / .zoom(sourceID:in:)，
-/// 没有 .fade（网上流传的 .fade 是第三方库 API；iOS 27 才新增内置 crossFade）。
-/// 这里按 NavigationTransition 协议自定义实现淡入淡出。
-private struct FadeNavigationTransition: NavigationTransition {
-    var body: some NavigationTransition {
-        NavigationTransition { context in
-            switch context.operation {
-            case .push:
-                context.top.animation { view in
-                    view.opacity(0)
-                }
-            case .pop:
-                context.top.animation { view in
-                    view.opacity(0)
-                }
-            default:
-                context.top.animation { view in
-                    view.opacity(0)
-                }
-            }
-        }
-    }
 }
 
 // MARK: - 解析中遮罩
