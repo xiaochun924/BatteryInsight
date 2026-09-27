@@ -198,7 +198,7 @@ struct BatteryHomeView: View {
                 infoRow(
                     icon: "battery.100", tint: healthTint(record.maximumCapacity),
                     title: "电池健康度",
-                    accessory: valueText(String(format: "%.1f", record.maximumCapacity) + " %",
+                    accessory: valueText(String(format: "%.2f", record.maximumCapacity) + " %",
                                          color: healthTint(record.maximumCapacity)))
             }
             if let cycles = latest?.cycleCount ?? latestAnalytics?.cycleCount {
