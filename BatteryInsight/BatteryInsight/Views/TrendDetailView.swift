@@ -297,8 +297,9 @@ struct TrendDetailView: View {
     ///
     /// 重要：Swift Charts 的 `.annotation` 在 iOS 26 真机上于 ScrollView 内不渲染
     /// （主页在 List 里正常，趋势分析页在 ScrollView 里不显示，实测确认），
-    /// 所以这里改用官方 `chartOverlay + ChartProxy`：把每个数据点在 plot area
-    /// 内的精确坐标取出来，手动放置胶囊标签，保证真机可见。
+    /// 所以改用官方 `chartOverlay + ChartProxy`：把每个数据点在 plot area 内
+    /// 的精确坐标取出来，手动放置胶囊标签，保证真机可见。
+    /// 注意 iOS 26 的 `plotFrame` 是 `Anchor<CGRect>?`，须用 GeometryReader 解引用。
     private func trendChart(points: [(date: Date, value: Double)],
                             format: @escaping (Double) -> String,
                             domain: ClosedRange<Double>) -> some View {
@@ -334,18 +335,22 @@ struct TrendDetailView: View {
         .chartYAxis(.hidden)
         // 手动放置逐点胶囊数值（替代 .annotation，真机 ScrollView 内 annotation 不渲染）
         .chartOverlay { proxy in
-            ForEach(points, id: \.date) { point in
-                if let plot = proxy.plotFrame,
-                   let px = proxy.position(forX: point.date),
-                   let py = proxy.position(forY: point.value) {
-                    Text(format(point.value))
-                        .font(.caption2.bold())
-                        .foregroundStyle(.green)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1)
-                        .background(.thinMaterial, in: Capsule())
-                        .position(x: plot.minX + px,
-                                  y: plot.minY + py - 14)
+            GeometryReader { geometry in
+                ForEach(points, id: \.date) { point in
+                    if let plot = proxy.plotFrame,
+                       let px = proxy.position(forX: point.date),
+                       let py = proxy.position(forY: point.value) {
+                        // plotFrame 是 Anchor<CGRect>，用 geometry 解引用拿到 plot 区域
+                        let origin = geometry[plot].origin
+                        Text(format(point.value))
+                            .font(.caption2.bold())
+                            .foregroundStyle(.green)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(.thinMaterial, in: Capsule())
+                            .position(x: origin.x + px,
+                                      y: origin.y + py - 14)
+                    }
                 }
             }
         }
