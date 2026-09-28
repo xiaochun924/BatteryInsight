@@ -123,6 +123,8 @@ struct BatteryHomeView: View {
                             .frame(width: 40, height: 40)
                             .glassEffect(.regular.interactive(), in: .circle)
                             .contentShape(Rectangle())
+                            // VoiceOver：纯图标菜单按钮必须可读
+                            .accessibilityLabel("更多")
                     }
                     .buttonStyle(.plain)
                 },
@@ -484,13 +486,16 @@ struct BatteryHomeView: View {
         } else {
             cycles = 0
         }
+        // 评级与健康色只算一次（body 渲染时避免重复 switch）
+        let recordRating = rating(record.maximumCapacity)
+        let recordTint = healthTint(record.maximumCapacity)
         return HStack(alignment: .center, spacing: 8) {
             // 列1：健康度 + 估算温度（截图对应「健康 101.60% / 15个应用卡顿」；
             // 卡顿无数据源，用估算温度占位）
             VStack(alignment: .leading, spacing: 6) {
                 Text("健康 " + String(format: "%.2f", record.maximumCapacity) + "%")
                     .font(.subheadline.bold())
-                    .foregroundStyle(healthTint(record.maximumCapacity))
+                    .foregroundStyle(recordTint)
                 if let temp = analytics?.temperature {
                     Text("约 \(String(format: "%.0f", temp))℃")
                         .font(.caption)
@@ -508,12 +513,12 @@ struct BatteryHomeView: View {
                 Text("循环 \(cycles) 次")
                     .font(.subheadline.bold())
                     .foregroundStyle(.primary)
-                Text(rating(record.maximumCapacity).text)
+                Text(recordRating.text)
                     .font(.caption2.bold())
                     .padding(.horizontal, 7)
                     .padding(.vertical, 2)
-                    .background(rating(record.maximumCapacity).color.opacity(0.15), in: Capsule())
-                    .foregroundStyle(rating(record.maximumCapacity).color)
+                    .background(recordRating.color.opacity(0.15), in: Capsule())
+                    .foregroundStyle(recordRating.color)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
