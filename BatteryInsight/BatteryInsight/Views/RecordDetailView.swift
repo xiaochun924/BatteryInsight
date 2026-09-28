@@ -399,8 +399,9 @@ struct RecordDetailView: View {
                 .multilineTextAlignment(.trailing)
                 // API-1：复制改用 SwiftUI 原生 .copyable（iOS 16+）——
                 // 长按/选择即弹「复制」，省掉 UIPasteboard 按钮 + copiedText 状态；
-                // 顺带给 VoiceOver 一个「拷贝」动作
-                .copyable(valueText)
+                // 顺带给 VoiceOver 一个「拷贝」动作。
+                // 注意：copyable 的 content 参数是 Text（不是 String）
+                .copyable(Text(valueText))
         }
         .padding(.vertical, 1)
     }
@@ -579,7 +580,8 @@ private struct UsageDetailSheet: View {
                 .font(.subheadline.bold())
                 .monospacedDigit()
                 .multilineTextAlignment(.trailing)
-                .copyable(value)
+                // copyable 参数是 Text（iOS 16+），String 不能隐式转换
+                .copyable(Text(value))
         }
     }
 }
