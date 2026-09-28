@@ -6,7 +6,8 @@ import SwiftUI
 /// 最高温度卡片 + 最高温传感器趋势 + 各分区传感器列表。
 /// 数据来自实时电源传感器引擎（HID/IOKit），模拟器上无传感器时显示说明。
 struct ThermalView: View {
-    @EnvironmentObject private var vm: BatteryViewModel
+    /// API-2：@Observable 环境注入（替代 @EnvironmentObject）
+    @Environment(BatteryViewModel.self) private var vm
     @State private var power = PowerMonitor()
 
     private var snapshot: PowerSnapshot { power.snapshot }
