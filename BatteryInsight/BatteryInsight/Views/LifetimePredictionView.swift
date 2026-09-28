@@ -188,18 +188,21 @@ struct LifetimePredictionView: View {
     /// 依据说明展开状态
     @State private var showBasis = false
 
+    /// 预测结果只算一次（body 顶部）；计算属性无缓存会导致 body 内多次访问重复重算
     private var forecast: LifetimeForecast {
         BatteryAnalytics.lifetimeForecast(health: vm.healthRecords, analytics: vm.analyticsRecords)
     }
 
     var body: some View {
+        // 一次求值只算一遍预测，子视图全部引用同一份（避免计算属性被多次访问重复重算）
+        let forecast = self.forecast
         ScrollView {
             VStack(spacing: 14) {
-                statusCard
-                milestoneRow
+                statusCard(forecast)
+                milestoneRow(forecast)
                 disclaimer
-                futureCard
-                wearCard
+                futureCard(forecast)
+                wearCard(forecast)
                 basisCard
             }
             .padding(.horizontal, 16)
@@ -212,22 +215,13 @@ struct LifetimePredictionView: View {
             GlassTopBar(title: "寿命预测",
                         leading: { GlassCircleButton(icon: "chevron.left") { dismiss() } })
         }
-        // 系统导航栏已隐藏，手动恢复右滑返回手势；
-        // 用 simultaneousGesture 避免与顶栏按钮的点击手势竞争
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 25)
-                .onEnded { value in
-                    if value.translation.width > 60,
-                       abs(value.translation.width) > abs(value.translation.height) {
-                        dismiss()
-                    }
-                }
-        )
+        // 系统导航栏已隐藏，手动恢复右滑返回手势（统一组件，见 Components.swift）
+        .swipeToDismiss(dismiss)
     }
 
     // MARK: 状态卡（正常老化 + 双轨均衡 + 提示 + 每日次数）
 
-    private var statusCard: some View {
+    private func statusCard(_ forecast: LifetimeForecast) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Text(forecast.agingState)
@@ -264,7 +258,7 @@ struct LifetimePredictionView: View {
 
     // MARK: 里程碑（跌到 80% / 90% 的预估时间，并排两卡）
 
-    private var milestoneRow: some View {
+    private func milestoneRow(_ forecast: LifetimeForecast) -> some View {
         HStack(spacing: 12) {
             milestoneCard(target: 80, months: forecast.monthsUntil80)
             milestoneCard(target: 90, months: forecast.monthsUntil90)
@@ -301,7 +295,7 @@ struct LifetimePredictionView: View {
 
     // MARK: 未来预测（1 / 3 / 6 个月容量保留）
 
-    private var futureCard: some View {
+    private func futureCard(_ forecast: LifetimeForecast) -> some View {
         VStack(spacing: 0) {
             sectionHeader("未来预测")
             if let future = forecast.futureRetentions {
@@ -331,7 +325,7 @@ struct LifetimePredictionView: View {
 
     // MARK: 双轨损耗分析（自然老化 / 循环磨损）
 
-    private var wearCard: some View {
+    private func wearCard(_ forecast: LifetimeForecast) -> some View {
         VStack(spacing: 10) {
             sectionHeader("双轨损耗分析")
             HStack(alignment: .top, spacing: 12) {
