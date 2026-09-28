@@ -6,8 +6,8 @@ import Charts
 ///
 /// 1. **设备信息卡**：一行一条（机型/系统、健康度、循环、温度、容量、最近检测）
 /// 2. **趋势图表卡**：「健康 / 容量」切换 + 衰减速率 + 折线图（隐藏日期/数值刻度，
-///    只显示最近 7 次记录，绿色折线加粗，逐点胶囊数值标签）+ Y 轴随数据自适应
-///    + 底部摘要行（预计多久降到 80% + 详情入口）
+///    只显示最近 7 次记录，绿色折线加粗 + 折线下淡绿渐变面积，逐点胶囊数值标签）
+///    + Y 轴随数据自适应 + 底部摘要行（预计多久降到 80% + 详情入口）
 /// 3. **检测记录**：每天一张独立圆角卡片底色（健康 %、循环次数、评级徽章、日期）
 ///
 /// 原「电量趋势 / 趋势统计」（电量 % 曲线及其统计）已按需求删除——
@@ -346,6 +346,21 @@ struct BatteryHomeView: View {
         let points = chartPoints
         return Chart {
             ForEach(points, id: \.date) { point in
+                // 折线下方的淡绿渐变面积（视觉层次，告别单调折线；与折线同色系，
+                // 顶部靠线处较深、向下渐隐，突出折线走势）
+                AreaMark(
+                    x: .value("日期", point.date),
+                    y: .value(metric == .health ? "健康度" : "容量", point.value)
+                )
+                .interpolationMethod(.monotone)
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [Color.green.opacity(0.25), Color.green.opacity(0.02)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+
                 LineMark(
                     x: .value("日期", point.date),
                     y: .value(metric == .health ? "健康度" : "容量", point.value)
