@@ -338,8 +338,7 @@ struct TrendDetailView: View {
     /// 所以改用官方 `chartOverlay + ChartProxy`：把每个数据点在 plot area 内
     /// 的精确坐标取出来，手动放置胶囊标签，保证真机可见。
     /// 注意 iOS 26 的 `plotFrame` 是 `Anchor<CGRect>?`，须用 GeometryReader 解引用。
-    /// 胶囊用浅绿纯色底替代 thinMaterial：滚动时 7 个磨砂采样器会随图表持续采样，
-    /// 纯色零采样开销，观感几乎无差。
+    /// 胶囊用 thinMaterial：与主页趋势图胶囊一致，微透明白底在绿线上更耐看。
     private func trendChart(points: [(date: Date, value: Double)],
                             format: @escaping (Double) -> String,
                             domain: ClosedRange<Double>,
@@ -404,7 +403,7 @@ struct TrendDetailView: View {
                             .foregroundStyle(.green)
                             .padding(.horizontal, 5)
                             .padding(.vertical, 1)
-                            .background(Color.green.opacity(0.12), in: Capsule())
+                            .background(.thinMaterial, in: Capsule())
                             .position(x: origin.x + px,
                                       y: origin.y + py - 14)
                     }
