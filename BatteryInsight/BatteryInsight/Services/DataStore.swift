@@ -192,13 +192,13 @@ final class DataStore: ObservableObject {
 
     private func load() {
         let dec = JSONDecoder()
-        if let d = UserDefaults.standard.data(forKey: kSamples),
+        if let d = UserDefaults.standard.data(forKey: Self.kSamples),
            let arr = try? dec.decode([BatterySample].self, from: d) { samples = arr }
-        if let d = UserDefaults.standard.data(forKey: kSessions),
+        if let d = UserDefaults.standard.data(forKey: Self.kSessions),
            let arr = try? dec.decode([ChargingSession].self, from: d) { sessions = arr }
-        if let d = UserDefaults.standard.data(forKey: kHealth),
+        if let d = UserDefaults.standard.data(forKey: Self.kHealth),
            let arr = try? dec.decode([HealthRecord].self, from: d) { healthRecords = arr }
-        if let d = UserDefaults.standard.data(forKey: kAnalytics),
+        if let d = UserDefaults.standard.data(forKey: Self.kAnalytics),
            let arr = try? dec.decode([AnalyticsRecord].self, from: d) { analyticsRecords = arr }
     }
 
