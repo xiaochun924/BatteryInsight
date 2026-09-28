@@ -55,12 +55,19 @@ struct GlassCircleButton: View {
     let icon: String
     var tint: Color = .primary
     var size: CGFloat = 40
+    /// 无障碍标签；nil 时按图标名映射中文（VoiceOver 朗读，纯图标按钮必须可读）
+    var label: String?
     let action: () -> Void
 
-    init(icon: String, tint: Color = .primary, size: CGFloat = 40, action: @escaping () -> Void) {
+    init(icon: String,
+         tint: Color = .primary,
+         size: CGFloat = 40,
+         label: String? = nil,
+         action: @escaping () -> Void) {
         self.icon = icon
         self.tint = tint
         self.size = size
+        self.label = label
         self.action = action
     }
 
@@ -76,27 +83,19 @@ struct GlassCircleButton: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-}
-
-// MARK: - 旧扩展（兼容保留：玻璃圆底 / 胶囊底）
-
-extension View {
-    /// 液态玻璃胶囊底（顶栏动作按钮通用）：iOS 26 官方 `.glassEffect()` + 提亮。
-    func glassCapsuleBackground() -> some View {
-        self.background {
-            Capsule()
-                .glassEffect()
-                .brightness(0.12)
-        }
+        // VoiceOver：纯图标按钮必须有可读标签；未显式指定时按常用图标映射中文
+        .accessibilityLabel(label ?? Self.defaultLabel(for: icon))
     }
 
-    /// 液态玻璃圆形底（顶栏圆形按钮通用）：iOS 26 官方 `.glassEffect()` + 提亮。
-    func glassCircleBackground() -> some View {
-        self.background {
-            Circle()
-                .glassEffect()
-                .brightness(0.12)
+    /// 项目内常用图标的无障碍名称映射（VoiceOver 朗读用）
+    private static func defaultLabel(for icon: String) -> String {
+        switch icon {
+        case "chevron.left": return "返回"
+        case "gearshape": return "设置"
+        case "xmark": return "关闭"
+        case "checkmark": return "确认"
+        case "square.and.arrow.up": return "分享"
+        default: return icon
         }
     }
 }
