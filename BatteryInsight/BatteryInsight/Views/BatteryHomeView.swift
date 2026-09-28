@@ -394,10 +394,25 @@ struct BatteryHomeView: View {
         .chartXAxis(.hidden)
         .chartYAxis(.hidden)
         .frame(height: 180)
+        // 无障碍（A11Y-2）：图表是纯图像，对 VoiceOver 提供文字摘要，
+        // 读屏用户也能知道趋势方向与幅度
+        .accessibilityLabel(metric == .health ? "最近7次健康度趋势" : "最近7次容量趋势")
+        .accessibilityValue(chartAccessibilitySummary(points))
     }
 
     private func label(for value: Double) -> String {
         metric == .health ? String(format: "%.1f", value) : "\(Int(value))"
+    }
+
+    /// 图表的 VoiceOver 摘要：首尾值 + 变化方向与幅度
+    private func chartAccessibilitySummary(_ points: [(date: Date, value: Double)]) -> String {
+        guard let first = points.first, let last = points.last else { return "暂无数据" }
+        let unit = metric == .health ? "%" : "mAh"
+        let delta = last.value - first.value
+        let arrow = delta >= 0 ? "上升" : "下降"
+        return String(format: "从%.1f%@到%.1f%@，%@%.1f%@",
+                      first.value, unit, last.value, unit,
+                      arrow, abs(delta), unit)
     }
 
     /// Y 轴范围：健康度与容量都按数据自适应，并留出上下余量。
@@ -418,12 +433,15 @@ struct BatteryHomeView: View {
         return lo...hi
     }
 
-    /// 底部摘要：按当前衰减速率估算降到 80% 的时间
+    /// 底部摘要：按当前衰减速率估算降到 80% 的时间。
+    /// P0-4：原实现里 monthsUntil80 会再内部调用一次 healthDeclinePerMonth（重复排序），
+    /// 这里直接取一次 rate 并自算月数，衰减速率全程只算一遍
     private var summaryText: String? {
-        guard metric == .health,
-              let latest = latest,
-              let months = BatteryAnalytics.monthsUntil80(records: vm.healthRecords) else { return nil }
-        let state = (BatteryAnalytics.healthDeclinePerMonth(vm.healthRecords) ?? 0) <= 1.0 ? "正常老化" : "老化偏快"
+        guard metric == .health, let latest = latest else { return nil }
+        let rate = BatteryAnalytics.healthDeclinePerMonth(vm.healthRecords)
+        let state = (rate ?? 0) <= 1.0 ? "正常老化" : "老化偏快"
+        guard let rate, rate > 0, latest.maximumCapacity > 80 else { return nil }
+        let months = (latest.maximumCapacity - 80) / rate
         if months >= 12 {
             let years = Int(months) / 12
             let rest = Int(months) % 12
