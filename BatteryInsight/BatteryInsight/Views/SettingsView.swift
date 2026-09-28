@@ -30,7 +30,9 @@ struct SettingsView: View {
                             leading: { GlassCircleButton(icon: "xmark") { dismiss() } },
                             trailing: { GlassCircleButton(icon: "checkmark", tint: .green) { dismiss() } })
             }
-            .offset(y: 8)
+            // 顶部留 8pt：避让 sheet 顶部大圆角（presentationDetents .medium），
+            // 用 padding 而非魔法数字 offset，语义更清晰
+            .padding(.top, 8)
         }
         .presentationDetents([.medium])
     }
