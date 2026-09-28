@@ -3,17 +3,22 @@ import Foundation
 /// 本地数据存储（demo 使用 UserDefaults + Codable）。
 /// 生产环境建议换成 SwiftData / CoreData，采样数据量会随时间持续增长。
 ///
-/// Swift 6：DataStore 是共享单例、所有 `@Published` 状态都在同一隔离域被读写，
+/// Swift 6：DataStore 是共享单例、所有状态都在同一隔离域被读写，
 /// 唯一调用方 `BatteryViewModel` 是 `@MainActor`，因此整体标记为主线程隔离，
 /// 满足严格并发检查且不引入跨线程访问同一份可变数据的问题。
+///
+/// API-2：ObservableObject + @Published → @Observable 宏（iOS 17+）。
+/// 四个数组当前仅被 ViewModel 读取（视图统一走 vm），不直接被视图观察；
+/// @Observable 让状态与宏生态一致，去掉 @Published 包装。
+@Observable
 @MainActor
-final class DataStore: ObservableObject {
+final class DataStore {
     static let shared = DataStore()
 
-    @Published private(set) var samples: [BatterySample] = []
-    @Published private(set) var sessions: [ChargingSession] = []
-    @Published private(set) var healthRecords: [HealthRecord] = []
-    @Published private(set) var analyticsRecords: [AnalyticsRecord] = []
+    private(set) var samples: [BatterySample] = []
+    private(set) var sessions: [ChargingSession] = []
+    private(set) var healthRecords: [HealthRecord] = []
+    private(set) var analyticsRecords: [AnalyticsRecord] = []
 
     private let kSamples   = "bi.samples"
     private let kSessions  = "bi.sessions"
