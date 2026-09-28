@@ -5,7 +5,7 @@ import Charts
 /// 参考竞品「趋势分析」截图布局：
 /// - 老化状态卡：正常老化 · 约 X 年 X 个月到 80%（右侧「详情」弹寿命预测）
 /// - 电池健康度趋势 / 电池容量趋势 两张折线图（只显示最近 7 次记录，隐藏 XY 轴坐标值，
-///   加粗折线 + 逐点胶囊数值标签）
+///   加粗折线 + 逐点胶囊数值标签 + 折线下淡绿渐变面积）
 /// - 趋势分析数据：时间跨度 / 数据点数量 / 健康度变化 / 容量变化 / 平均·最高·最低
 /// 竞品截图中无真实数据源的项目（电池周报 / 月报）不实现。
 struct TrendDetailView: View {
@@ -182,7 +182,22 @@ struct TrendDetailView: View {
             .frame(height: 200)
         }
         .padding(14)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        // 淡绿渐变卡底（告别纯白单调）：左上淡绿 → 右下白，与绿色折线/面积呼应；
+        // 附加一层极淡描边勾出卡片轮廓
+        .background {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [Color.green.opacity(0.10), Color(.secondarySystemGroupedBackground)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(.separator.opacity(0.4), lineWidth: 1)
+        }
     }
 
     // MARK: - 容量趋势
@@ -203,7 +218,21 @@ struct TrendDetailView: View {
             .frame(height: 200)
         }
         .padding(14)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        // 与健康度卡一致的淡绿渐变卡底 + 细描边
+        .background {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [Color.green.opacity(0.10), Color(.secondarySystemGroupedBackground)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(.separator.opacity(0.4), lineWidth: 1)
+        }
     }
 
     // MARK: - 趋势分析数据
@@ -292,7 +321,7 @@ struct TrendDetailView: View {
         }
     }
 
-    /// 折线图：绿色加粗折线 + 数据点 + 逐点胶囊数值标签。
+    /// 折线图：绿色加粗折线 + 折线下淡绿渐变面积 + 数据点 + 逐点胶囊数值标签。
     /// 只显示最近 7 次记录（由调用方传入），隐藏 XY 轴坐标值（刻度杂乱观感差）。
     ///
     /// 重要：Swift Charts 的 `.annotation` 在 iOS 26 真机上于 ScrollView 内不渲染
@@ -313,6 +342,21 @@ struct TrendDetailView: View {
         }
         return Chart {
             ForEach(points, id: \.date) { point in
+                // 折线下方的淡绿渐变面积（视觉层次，告别单调折线；与折线同色系，
+                // 顶部靠线处较深、向下渐隐，突出折线走势）
+                AreaMark(
+                    x: .value("日期", point.date),
+                    y: .value("值", point.value)
+                )
+                .interpolationMethod(.monotone)
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [Color.green.opacity(0.25), Color.green.opacity(0.02)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+
                 LineMark(
                     x: .value("日期", point.date),
                     y: .value("值", point.value)
