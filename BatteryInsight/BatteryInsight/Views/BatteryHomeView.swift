@@ -96,7 +96,7 @@ struct BatteryHomeView: View {
                             .font(.system(size: 17, weight: .semibold))
                             .foregroundColor(.primary)
                             .frame(width: 40, height: 40)
-                            .glassEffect(.thin.interactive(), in: .circle)
+                            .glassEffect(.clear.interactive(), in: .circle)
                             .contentShape(Rectangle())
                             // VoiceOver：纯图标菜单按钮必须可读
                             .accessibilityLabel("更多")
@@ -113,7 +113,7 @@ struct BatteryHomeView: View {
                                 .foregroundColor(.primary)
                                 .padding(.horizontal, 14)
                                 .frame(height: 40)
-                                .glassEffect(.thin.interactive(), in: .capsule)
+                                .glassEffect(.clear.interactive(), in: .capsule)
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
