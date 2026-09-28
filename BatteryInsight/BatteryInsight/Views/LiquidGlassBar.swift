@@ -30,10 +30,13 @@ struct GlassTopBar<Leading: View, Trailing: View>: View {
         GlassEffectContainer {
             // 标题用 ZStack 绝对居中，不受左右按钮宽度影响；左右按钮覆盖在两侧
             ZStack {
-                // 中间悬浮玻璃胶囊标题（官方 Liquid Glass）
+                // 中间悬浮玻璃胶囊标题（官方 Liquid Glass）。
+                // 用系统样式 .headline 而非固定 .system(size:16)：
+                // 随 Dynamic Type 缩放，VoiceOver 大字模式下不截断
                 Text(title)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.headline)
                     .foregroundColor(.primary)
+                    .lineLimit(1)
                     .padding(.horizontal, 20)
                     .frame(height: 40)
                     .glassEffect(.clear, in: .capsule)
