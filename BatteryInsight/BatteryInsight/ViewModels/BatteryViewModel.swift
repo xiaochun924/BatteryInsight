@@ -43,24 +43,29 @@ struct AnalyticsImportReport: Sendable {
 }
 
 /// 电池分析主状态机：串联监控器、存储与分析引擎。
+///
+/// API-2：由 ObservableObject + @Published 迁移到 @Observable 宏（iOS 17+）。
+/// @Observable 按属性粒度发布，天然消除 P0-2 那种「改一个字段全量刷新」的问题；
+/// 视图侧对应 `@State` / `@Environment(BatteryViewModel.self)`。
+@Observable
 @MainActor
-final class BatteryViewModel: ObservableObject {
-    @Published var level: Double = -1                 // 0.0~1.0，<0 表示当前不可读
-    @Published var state: BatteryStateKind = .unknown
-    @Published var drainRate: Double?                // %/小时
-    @Published var remainingHours: Double?
-    @Published var samples: [BatterySample] = []
-    @Published var sessions: [ChargingSession] = []
-    @Published var healthRecords: [HealthRecord] = []
-    @Published var analyticsRecords: [AnalyticsRecord] = []
+final class BatteryViewModel {
+    var level: Double = -1                 // 0.0~1.0，<0 表示当前不可读
+    var state: BatteryStateKind = .unknown
+    var drainRate: Double?                // %/小时
+    var remainingHours: Double?
+    var samples: [BatterySample] = []
+    var sessions: [ChargingSession] = []
+    var healthRecords: [HealthRecord] = []
+    var analyticsRecords: [AnalyticsRecord] = []
 
     /// 最近一次日志导入的提示信息（供 UI 展示成功/失败）
-    @Published var importMessage: String?
-    @Published var importSucceeded = false
+    var importMessage: String?
+    var importSucceeded = false
     /// 正在导入/解析。几十 MB 的日志解析要几秒，不挪到后台会把界面卡成黑屏
-    @Published var isImporting = false
+    var isImporting = false
     /// 当前阶段文案，配合上面的转圈动画显示
-    @Published var importStage: String?
+    var importStage: String?
 
     private let monitor = BatteryMonitor()
     private let store = DataStore.shared
@@ -160,8 +165,7 @@ final class BatteryViewModel: ObservableObject {
     }
 
     /// P0-2：采样 15 秒一条，每次只更新实时字段 + 采样数组 + 速率重算；
-    /// 不再全量 refresh 四个 @Published 数组（健康度/分析日志/会话在采样期间根本没变，
-    /// 全量重赋值等于无谓触发 4 次 objectWillChange，UI 被高频无效刷新）。
+    /// 不再全量 refresh 四个数组（健康度/分析日志/会话在采样期间根本没变）。
     /// 全量刷新保留给真正数据变化的动作：导入、删除、充电状态翻转、退前台补刷。
     private func handle(_ sample: BatterySample) {
         level = sample.level
