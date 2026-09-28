@@ -18,7 +18,6 @@ struct RecordDetailView: View {
     let analytics: AnalyticsRecord?
 
     @State private var tab: Tab = .battery
-    @State private var copiedText: String?
     @State private var showUsageDetail = false
     @Environment(\.dismiss) private var dismiss
 
@@ -61,13 +60,12 @@ struct RecordDetailView: View {
                 title: titleText,
                 leading: { GlassCircleButton(icon: "chevron.left") { dismiss() } },
                 trailing: {
-                    // 分享：Button + 系统分享面板（不用 ShareLink，保证玻璃圆底样式）
+                    // 分享：Button + 系统分享面板（不用 ShareLink，保证玻璃圆底样式；
+                    // 无障碍标签由 GlassCircleButton 组件级映射为「分享」）
                     GlassCircleButton(icon: "square.and.arrow.up") { presentShareSheet() }
                 }
             )
         }
-        // 复制成功的反馈用图标变化（✓）表达；部署目标 iOS 26，可用 sensoryFeedback
-        .sensoryFeedback(.success, trigger: copiedText)
         // 「查看详情」：续航详情 push 二级页
         .navigationDestination(isPresented: $showUsageDetail) {
             UsageDetailSheet(analytics: analytics)
@@ -370,7 +368,7 @@ struct RecordDetailView: View {
             .padding(.bottom, 2)
     }
 
-    /// 一行：图标 + 名称 + 数值 + 复制按钮
+    /// 一行：图标 + 名称 + 数值（长按可复制，iOS 16+ 原生 .copyable，替代 UIPasteboard 按钮）
     private func row(_ title: String, valueText: String, tint: Color, caption: String? = nil) -> some View {
         HStack(spacing: 10) {
             Rectangle()
@@ -399,16 +397,10 @@ struct RecordDetailView: View {
                 .font(.subheadline.bold())
                 .monospacedDigit()
                 .multilineTextAlignment(.trailing)
-
-            Button {
-                UIPasteboard.general.string = valueText
-                copiedText = valueText
-            } label: {
-                Image(systemName: copiedText == valueText ? "checkmark" : "doc.on.doc")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
+                // API-1：复制改用 SwiftUI 原生 .copyable（iOS 16+）——
+                // 长按/选择即弹「复制」，省掉 UIPasteboard 按钮 + copiedText 状态；
+                // 顺带给 VoiceOver 一个「拷贝」动作
+                .copyable(valueText)
         }
         .padding(.vertical, 1)
     }
@@ -439,7 +431,9 @@ struct RecordDetailView: View {
         }
     }
 
-    /// 弹出系统分享面板（替代 ShareLink，保证按钮走液态玻璃圆底样式）
+    /// 弹出系统分享面板（替代 ShareLink，保证按钮走液态玻璃圆底样式）。
+    /// 保留 UIKit 实现是刻意的：玻璃圆底按钮样式需要 Button 自定义，
+    /// ShareLink 无法复用 GlassCircleButton。
     @MainActor
     private func presentShareSheet() {
         // 与 DocumentPickerLauncher 一致：只取前台活动场景，
@@ -585,6 +579,7 @@ private struct UsageDetailSheet: View {
                 .font(.subheadline.bold())
                 .monospacedDigit()
                 .multilineTextAlignment(.trailing)
+                .copyable(value)
         }
     }
 }
