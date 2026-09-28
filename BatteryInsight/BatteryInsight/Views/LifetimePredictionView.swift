@@ -207,13 +207,5 @@ struct LifetimePredictionView: View {
     private func clamp01(_ x: Double) -> Double { min(max(x, 0), 1) }
 }
 
-// MARK: - 卡片样式（H-2 重构后：统一走 Components.swift 的 CardContainer）
-
-/// 本页卡片统一使用 Components.swift 的 CardContainer：
-/// 圆角 16 continuous + 磨砂玻璃白底 + 系统分隔线描边。
-/// 各页面各自实现的卡片样式已收敛到该组件（见 Components.swift 顶部注释）。
-private extension View {
-    func cardStyle() -> some View {
-        self.modifier(CardContainerModifier())
-    }
-}
+// 卡片样式统一走 Components.swift 的公共 cardStyle()（圆角 16 continuous + 磨砂玻璃白底）。
+// 本文件不再自建私有扩展，避免各页样式漂移（H-2）。
