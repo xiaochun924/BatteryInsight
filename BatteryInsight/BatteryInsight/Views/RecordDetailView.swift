@@ -72,17 +72,8 @@ struct RecordDetailView: View {
         .navigationDestination(isPresented: $showUsageDetail) {
             UsageDetailSheet(analytics: analytics)
         }
-        // 系统导航栏已隐藏，手动恢复右滑返回手势；
-        // 用 simultaneousGesture 避免与顶栏按钮的点击手势竞争
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 25)
-                .onEnded { value in
-                    if value.translation.width > 60,
-                       abs(value.translation.width) > abs(value.translation.height) {
-                        dismiss()
-                    }
-                }
-        )
+        // 系统导航栏已隐藏，手动恢复右滑返回手势（统一组件，见 Components.swift）
+        .swipeToDismiss(dismiss)
     }
 
     private var displayTab: Tab {
@@ -451,8 +442,12 @@ struct RecordDetailView: View {
     /// 弹出系统分享面板（替代 ShareLink，保证按钮走液态玻璃圆底样式）
     @MainActor
     private func presentShareSheet() {
-        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let root = scene.windows.first?.rootViewController else { return }
+        // 与 DocumentPickerLauncher 一致：只取前台活动场景，
+        // 避免多窗口/App 切换时拿到后台场景导致分享面板弹不出
+        guard let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive }),
+              let root = scene.keyWindow?.rootViewController else { return }
         let sheet = UIActivityViewController(activityItems: [shareText], applicationActivities: nil)
         sheet.popoverPresentationController?.sourceView = root.view
         sheet.popoverPresentationController?.sourceRect = CGRect(x: root.view.bounds.midX, y: 60, width: 0, height: 0)
@@ -514,50 +509,41 @@ private struct UsageDetailSheet: View {
         List {
             Section {
                 detailRow("亮屏时长", secondsText(analytics?.screenOnSeconds), "sun.max.fill", .green)
-                    detailRow("后台唤醒", secondsText(analytics?.awakeSeconds), "moon.stars.fill", .orange)
-                    detailRow("充电时长", minutesText(analytics?.chargingMinutes), "bolt.fill", .blue)
-                    detailRow("未插电时长", secondsText(analytics?.unpluggedDurationSeconds), "poweroutlet.type.fill", .green)
-                } header: {
-                    Text("时段明细")
-                } footer: {
-                    Text("亮屏/唤醒为 intervalUsage 段 15 分钟区间求和；充电为 SystemChargingDuration 汇总（分钟）；未插电为 UnpluggedDurationEnergyViewNew。")
-                }
+                detailRow("后台唤醒", secondsText(analytics?.awakeSeconds), "moon.stars.fill", .orange)
+                detailRow("充电时长", minutesText(analytics?.chargingMinutes), "bolt.fill", .blue)
+                detailRow("未插电时长", secondsText(analytics?.unpluggedDurationSeconds), "poweroutlet.type.fill", .green)
+            } header: {
+                Text("时段明细")
+            } footer: {
+                Text("亮屏/唤醒为 intervalUsage 段 15 分钟区间求和；充电为 SystemChargingDuration 汇总（分钟）；未插电为 UnpluggedDurationEnergyViewNew。")
+            }
 
-                if analytics?.maxTemperature != nil || analytics?.totalOperatingHours != nil {
-                    Section {
-                        if let r = analytics, let hi = r.maxTemperature {
-                            detailRow("温度区间",
-                                      temperatureText(hi, avg: r.temperature, lo: r.minTemperature),
-                                      "thermometer.medium", .orange)
-                        }
-                        if let h = analytics?.totalOperatingHours {
-                            let hours = Int(h.rounded())
-                            let grouped = NumberFormatter.localizedString(from: NSNumber(value: hours), number: .decimal)
-                            detailRow("运行时长", "\(grouped) 小时（\(String(format: "%.1f", h / 24)) 天）",
-                                      "clock.fill", .gray)
-                        }
-                    } header: {
-                        Text("电池状态")
+            if analytics?.maxTemperature != nil || analytics?.totalOperatingHours != nil {
+                Section {
+                    if let r = analytics, let hi = r.maxTemperature {
+                        detailRow("温度区间",
+                                  temperatureText(hi, avg: r.temperature, lo: r.minTemperature),
+                                  "thermometer.medium", .orange)
                     }
+                    if let h = analytics?.totalOperatingHours {
+                        let hours = Int(h.rounded())
+                        let grouped = NumberFormatter.localizedString(from: NSNumber(value: hours), number: .decimal)
+                        detailRow("运行时长", "\(grouped) 小时（\(String(format: "%.1f", h / 24)) 天）",
+                                  "clock.fill", .gray)
+                    }
+                } header: {
+                    Text("电池状态")
                 }
             }
+        }
         // 液态玻璃悬浮顶栏（参考 home-inventory 官方 Liquid Glass 实现）；二级页左上返回
         .toolbar(.hidden, for: .navigationBar)
         .safeAreaInset(edge: .top, spacing: 0) {
             GlassTopBar(title: "续航详情",
                         leading: { GlassCircleButton(icon: "chevron.left") { dismiss() } })
         }
-        // 系统导航栏已隐藏，手动恢复右滑返回手势；
-        // 用 simultaneousGesture 避免与顶栏按钮的点击手势竞争
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 25)
-                .onEnded { value in
-                    if value.translation.width > 60,
-                       abs(value.translation.width) > abs(value.translation.height) {
-                        dismiss()
-                    }
-                }
-        )
+        // 系统导航栏已隐藏，手动恢复右滑返回手势（统一组件，见 Components.swift）
+        .swipeToDismiss(dismiss)
     }
 
     private func secondsText(_ s: Double?) -> String {
