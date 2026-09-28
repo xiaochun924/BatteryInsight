@@ -222,38 +222,39 @@ struct LifetimePredictionView: View {
     // MARK: 状态卡（正常老化 + 双轨均衡 + 提示 + 每日次数）
 
     private func statusCard(_ forecast: LifetimeForecast) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Text(forecast.agingState)
-                    .font(.subheadline.bold())
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 5)
-                    .background(.green.opacity(0.15), in: Capsule())
-                    .foregroundStyle(.green)
-                Text(forecast.trackBalance)
-                    .font(.subheadline.bold())
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 5)
-                    .background(.teal.opacity(0.15), in: Capsule())
-                    .foregroundStyle(.teal)
-                Spacer()
-            }
-            HStack(spacing: 6) {
-                Image(systemName: "scalemass")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                Text(forecast.hint)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                Spacer()
-            }
-            if let cpd = forecast.dailyCycleCount {
-                Label(String(format: "%.2f 次/天", cpd), systemImage: "arrow.2.circlepath")
-                    .font(.subheadline.bold())
-                    .foregroundStyle(.primary)
+        CardContainer {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Text(forecast.agingState)
+                        .font(.subheadline.bold())
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 5)
+                        .background(.green.opacity(0.15), in: Capsule())
+                        .foregroundStyle(.green)
+                    Text(forecast.trackBalance)
+                        .font(.subheadline.bold())
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 5)
+                        .background(.teal.opacity(0.15), in: Capsule())
+                        .foregroundStyle(.teal)
+                    Spacer()
+                }
+                HStack(spacing: 6) {
+                    Image(systemName: "scalemass")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Text(forecast.hint)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                if let cpd = forecast.dailyCycleCount {
+                    Label(String(format: "%.2f 次/天", cpd), systemImage: "arrow.2.circlepath")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.primary)
+                }
             }
         }
-        .cardStyle()
     }
 
     // MARK: 里程碑（跌到 80% / 90% 的预估时间，并排两卡）
@@ -266,16 +267,16 @@ struct LifetimePredictionView: View {
     }
 
     private func milestoneCard(target: Int, months: Double?) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("跌到 \(target)% 的预估时间")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-            Text(months.map { BatteryAnalytics.durationText($0) } ?? "继续记录")
-                .font(.title2.bold())
-                .foregroundStyle(.green)
+        CardContainer {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("跌到 \(target)% 的预估时间")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Text(months.map { BatteryAnalytics.durationText($0) } ?? "继续记录")
+                    .font(.title2.bold())
+                    .foregroundStyle(.green)
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .cardStyle()
     }
 
     // MARK: 免责提示
@@ -296,59 +297,61 @@ struct LifetimePredictionView: View {
     // MARK: 未来预测（1 / 3 / 6 个月容量保留）
 
     private func futureCard(_ forecast: LifetimeForecast) -> some View {
-        VStack(spacing: 0) {
-            sectionHeader("未来预测")
-            if let future = forecast.futureRetentions {
-                ForEach(future, id: \.months) { item in
-                    Divider()
-                    HStack {
-                        Text("\(item.months) 个月")
-                            .font(.subheadline)
-                            .foregroundStyle(.primary)
-                        Spacer()
-                        Text(String(format: "%.1f%%", item.retention))
-                            .font(.subheadline.bold())
-                            .foregroundStyle(.green)
+        CardContainer {
+            VStack(spacing: 0) {
+                sectionHeader("未来预测")
+                if let future = forecast.futureRetentions {
+                    ForEach(future, id: \.months) { item in
+                        Divider()
+                        HStack {
+                            Text("\(item.months) 个月")
+                                .font(.subheadline)
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            Text(String(format: "%.1f%%", item.retention))
+                                .font(.subheadline.bold())
+                                .foregroundStyle(.green)
+                        }
+                        .padding(.vertical, 9)
                     }
-                    .padding(.vertical, 9)
+                } else {
+                    Text("继续记录数据后可预测")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, 12)
                 }
-            } else {
-                Text("继续记录数据后可预测")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 12)
             }
         }
-        .cardStyle()
     }
 
     // MARK: 双轨损耗分析（自然老化 / 循环磨损）
 
     private func wearCard(_ forecast: LifetimeForecast) -> some View {
-        VStack(spacing: 10) {
-            sectionHeader("双轨损耗分析")
-            HStack(alignment: .top, spacing: 12) {
-                wearColumn(title: "自然老化", value: forecast.naturalLossPerDay)
-                wearColumn(title: "循环磨损", value: forecast.cycleLossPerDay)
-            }
-            Divider()
-            HStack(spacing: 6) {
-                Image(systemName: "scalemass")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                Text(forecast.hint)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                Spacer()
-            }
-            if let cpd = forecast.dailyCycleCount {
-                Label(String(format: "%.2f 次/天", cpd), systemImage: "arrow.2.circlepath")
-                    .font(.subheadline.bold())
-                    .foregroundStyle(.primary)
+        CardContainer {
+            VStack(spacing: 10) {
+                sectionHeader("双轨损耗分析")
+                HStack(alignment: .top, spacing: 12) {
+                    wearColumn(title: "自然老化", value: forecast.naturalLossPerDay)
+                    wearColumn(title: "循环磨损", value: forecast.cycleLossPerDay)
+                }
+                Divider()
+                HStack(spacing: 6) {
+                    Image(systemName: "scalemass")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Text(forecast.hint)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                if let cpd = forecast.dailyCycleCount {
+                    Label(String(format: "%.2f 次/天", cpd), systemImage: "arrow.2.circlepath")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.primary)
+                }
             }
         }
-        .cardStyle()
     }
 
     private func wearColumn(title: String, value: Double?) -> some View {
@@ -366,41 +369,42 @@ struct LifetimePredictionView: View {
     // MARK: 依据说明（可展开）
 
     private var basisCard: some View {
-        VStack(spacing: 10) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) { showBasis.toggle() }
-            } label: {
-                HStack {
-                    Text("这个数据的依据是什么？")
-                        .font(.subheadline.bold())
-                        .foregroundStyle(.primary)
-                    Spacer()
-                    Image(systemName: "chevron.down")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .rotationEffect(.degrees(showBasis ? 180 : 0))
+        CardContainer {
+            VStack(spacing: 10) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { showBasis.toggle() }
+                } label: {
+                    HStack {
+                        Text("这个数据的依据是什么？")
+                            .font(.subheadline.bold())
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Image(systemName: "chevron.down")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .rotationEffect(.degrees(showBasis ? 180 : 0))
+                    }
                 }
-            }
-            .buttonStyle(.plain)
+                .buttonStyle(.plain)
 
-            if showBasis {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("预测基于你已记录的数据做线性外推，口径如下：")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    basisRow("每日循环次数", "总循环次数 ÷ 已使用天数（自首次使用日起）")
-                    basisRow("容量衰减速率", "健康度月衰减 × 额定容量 ÷ 30 天")
-                    basisRow("自然老化", "总衰减 − 循环磨损（每次循环按额定容量 0.02% 估算）")
-                    basisRow("循环磨损", "每次循环损耗 × 每日循环次数")
-                    basisRow("未来保留率", "当前容量 − 月衰减 × 月数，再除以额定容量")
-                    Text("数据点越多，预测越稳；样本仅 1~2 条时结果波动大，仅供参考。")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                if showBasis {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("预测基于你已记录的数据做线性外推，口径如下：")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        basisRow("每日循环次数", "总循环次数 ÷ 已使用天数（自首次使用日起）")
+                        basisRow("容量衰减速率", "健康度月衰减 × 额定容量 ÷ 30 天")
+                        basisRow("自然老化", "总衰减 − 循环磨损（每次循环按额定容量 0.02% 估算）")
+                        basisRow("循环磨损", "每次循环损耗 × 每日循环次数")
+                        basisRow("未来保留率", "当前容量 − 月衰减 × 月数，再除以额定容量")
+                        Text("数据点越多，预测越稳；样本仅 1~2 条时结果波动大，仅供参考。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.top, 4)
                 }
-                .padding(.top, 4)
             }
         }
-        .cardStyle()
     }
 
     private func basisRow(_ title: String, _ detail: String) -> some View {
@@ -425,17 +429,5 @@ struct LifetimePredictionView: View {
             Spacer()
         }
         .padding(.bottom, 2)
-    }
-}
-
-// MARK: - 卡片样式
-
-private extension View {
-    /// 液态玻璃卡片：圆角材质底 + 均匀内边距
-    func cardStyle() -> some View {
-        self
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
     }
 }
