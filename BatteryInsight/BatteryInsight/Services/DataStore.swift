@@ -15,12 +15,18 @@ final class DataStore: ObservableObject {
     @Published private(set) var healthRecords: [HealthRecord] = []
     @Published private(set) var analyticsRecords: [AnalyticsRecord] = []
 
-    private let kSamples   = "bi.samples"
-    private let kSessions  = "bi.sessions"
-    private let kHealth    = "bi.health"
-    private let kAnalytics = "bi.analytics"
+    private static let kSamples   = "bi.samples"
+    private static let kSessions  = "bi.sessions"
+    private static let kHealth    = "bi.health"
+    private static let kAnalytics = "bi.analytics"
     /// 采样上限，超出后丢弃最旧数据，避免无限增长
     private let sampleCap = 20000
+    /// P0-1：落盘状态。变更只标记 dirty，达到最小间隔才真正编码写入，
+    /// 期间多次变更合并为一次（见 scheduleSave / persist）
+    private var needsSave = false
+    private var lastSaveAt: Date = .distantPast
+    /// 两次真实落盘的最小间隔（秒）。15 秒一次采样若每次全量编码 2 万条，App 越用越卡
+    private let minSaveInterval: TimeInterval = 5
 
     private init() { load() }
 
@@ -31,7 +37,7 @@ final class DataStore: ObservableObject {
         if samples.count > sampleCap {
             samples.removeFirst(samples.count - sampleCap)
         }
-        save()
+        scheduleSave()
     }
 
     // MARK: - 充电会话
@@ -46,7 +52,7 @@ final class DataStore: ObservableObject {
         var s = ChargingSession(startDate: date, startLevel: level)
         s.peakLevel = level
         sessions.append(s)
-        save()
+        scheduleSave()
     }
 
     func endActiveSession(at date: Date, level: Double) {
@@ -55,7 +61,7 @@ final class DataStore: ObservableObject {
         sessions[idx].endLevel = level
         sessions[idx].peakLevel = max(sessions[idx].peakLevel, level)
         sessions[idx].isOvernight = Self.isOvernight(start: sessions[idx].startDate, end: date)
-        save()
+        scheduleSave()
     }
 
     /// 充电过程中更新峰值电量（用于会话未完成时的展示）
@@ -82,12 +88,12 @@ final class DataStore: ObservableObject {
     func addHealthRecord(_ r: HealthRecord) {
         healthRecords.append(r)
         healthRecords.sort { $0.date < $1.date }
-        save()
+        scheduleSave()
     }
 
     func deleteHealthRecord(_ r: HealthRecord) {
         healthRecords.removeAll { $0.id == r.id }
-        save()
+        scheduleSave()
     }
 
     /// 删除某一天的分析日志记录（删除主页记录时同步调用，
@@ -97,7 +103,7 @@ final class DataStore: ObservableObject {
         analyticsRecords.removeAll {
             Calendar.current.startOfDay(for: $0.date) == day
         }
-        save()
+        scheduleSave()
     }
 
     // MARK: - 分析日志记录
@@ -123,7 +129,7 @@ final class DataStore: ObservableObject {
             added += 1
         }
         analyticsRecords.sort { $0.date < $1.date }
-        save()
+        scheduleSave()
         return added
     }
 
@@ -136,17 +142,50 @@ final class DataStore: ObservableObject {
     /// 整批替换（字段补齐 / 迁移用）：保持日期升序并落盘
     func replaceAnalytics(_ records: [AnalyticsRecord]) {
         analyticsRecords = records.sorted { $0.date < $1.date }
-        save()
+        scheduleSave()
     }
 
-    // MARK: - 持久化
+    // MARK: - 持久化（P0-1：编码挪后台 + 降频落盘）
 
-    private func save() {
+    /// 变更只标记 dirty，达到最小间隔才真正落盘，期间多次变更合并为一次写入。
+    /// 避免每 15 秒采样一次就主线程全量编码 2 万条 samples——App 用得越久每次越卡
+    private func scheduleSave() {
+        needsSave = true
+        guard Date().timeIntervalSince(lastSaveAt) >= minSaveInterval else { return }
+        persist()
+    }
+
+    /// 快照在主线程取好（值类型拷贝，跨线程安全），编码 + 写入全部在后台队列执行，
+    /// 主线程只做数组 append / 替换，不再参与 JSON 编码
+    private func persist() {
+        needsSave = false
+        lastSaveAt = Date()
+        let snapshot = (samples, sessions, healthRecords, analyticsRecords)
+        DispatchQueue.global(qos: .utility).async { [snapshot] in
+            Self.write(snapshot)
+        }
+    }
+
+    /// 退后台时强制落盘：把 pending 的变更立即写入。
+    /// 频率极低（仅 App 生命周期翻转时一次），主线程同步编码一次可接受
+    func flushNow() {
+        guard needsSave || Date().timeIntervalSince(lastSaveAt) >= minSaveInterval else { return }
+        needsSave = false
+        lastSaveAt = Date()
+        Self.write((samples, sessions, healthRecords, analyticsRecords))
+    }
+
+    /// 编码 + 写 UserDefaults。静态、非隔离，可在后台队列执行；
+    /// UserDefaults 线程安全，跨线程 set 无需加锁
+    nonisolated private static func write(_ snapshot: (samples: [BatterySample],
+                                                       sessions: [ChargingSession],
+                                                       healthRecords: [HealthRecord],
+                                                       analyticsRecords: [AnalyticsRecord])) {
         let enc = JSONEncoder()
-        if let d = try? enc.encode(samples)         { UserDefaults.standard.set(d, forKey: kSamples) }
-        if let d = try? enc.encode(sessions)        { UserDefaults.standard.set(d, forKey: kSessions) }
-        if let d = try? enc.encode(healthRecords)   { UserDefaults.standard.set(d, forKey: kHealth) }
-        if let d = try? enc.encode(analyticsRecords){ UserDefaults.standard.set(d, forKey: kAnalytics) }
+        if let d = try? enc.encode(snapshot.samples)         { UserDefaults.standard.set(d, forKey: Self.kSamples) }
+        if let d = try? enc.encode(snapshot.sessions)        { UserDefaults.standard.set(d, forKey: Self.kSessions) }
+        if let d = try? enc.encode(snapshot.healthRecords)   { UserDefaults.standard.set(d, forKey: Self.kHealth) }
+        if let d = try? enc.encode(snapshot.analyticsRecords){ UserDefaults.standard.set(d, forKey: Self.kAnalytics) }
     }
 
     private func load() {
@@ -166,7 +205,7 @@ final class DataStore: ObservableObject {
         sessions = []
         healthRecords = []
         analyticsRecords = []
-        save()
+        scheduleSave()
     }
 
     // MARK: - 演示数据
@@ -221,6 +260,6 @@ final class DataStore: ObservableObject {
                              cycleCount: 120 + i * 38)
             )
         }
-        save()
+        scheduleSave()
     }
 }
