@@ -44,8 +44,23 @@ extension BatteryAnalytics {
     static func lifetimeForecast(health: [HealthRecord],
                                  analytics: [AnalyticsRecord]) -> LifetimeForecast {
         let sortedA = analytics.sorted { $0.date < $1.date }
+        // P0-3：health 只排序一次，后面 latest / 衰减速率 / 跌到目标月数全部复用，
+        // 不再每次访问都重排（原实现内部约 5 次重复排序）
+        let sortedH = health.sorted { $0.date < $1.date }
         let first = sortedA.first
         let last = sortedA.last
+        let latestHealth = sortedH.last
+
+        // 衰减速率（%/月）只算一次：基于已排序数组直接计算，
+        // 供 total / aging / m80 / m90 四处复用（原实现 healthDeclinePerMonth 被调 2 次、
+        // monthsUntil80 内部再调 1 次，每次都重新排序）
+        let declineRate: Double? = {
+            guard let f = sortedH.first, let l = sortedH.last, l.date > f.date else { return nil }
+            let months = l.date.timeIntervalSince(f.date) / (30 * 24 * 3600)
+            guard months > 0 else { return nil }
+            let diff = f.maximumCapacity - l.maximumCapacity
+            return diff >= 0 ? diff / months : nil
+        }()
 
         // 注意：`a?.b ?? c?.d` 中 a?.b / c?.d 都是嵌套可选项（Int?? / Date??），
         // `??` 泛型推断存在歧义风险；这里全部先解一层再合并，保证编译稳定。
@@ -72,7 +87,7 @@ extension BatteryAnalytics {
         var lastDay: Date?
         if let d = last?.date {
             lastDay = d
-        } else if let d = health.sorted { $0.date < $1.date }.last?.date {
+        } else if let d = latestHealth?.date {
             lastDay = d
         }
         var days: Double?
@@ -88,7 +103,7 @@ extension BatteryAnalytics {
 
         // 总容量衰减速率（健康度口径）
         var total: Double?
-        if let rate = healthDeclinePerMonth(health), let cap = design,
+        if let rate = declineRate, let cap = design,
            rate > 0, cap > 0 {
             total = rate / 100 * Double(cap) / 30
         }
@@ -119,9 +134,8 @@ extension BatteryAnalytics {
         }
 
         // 老化状态
-        let rate = healthDeclinePerMonth(health)
         let aging: String
-        if let r = rate {
+        if let r = declineRate {
             aging = r <= 1.0 ? "正常老化" : "老化偏快"
         } else {
             aging = "暂无数据"
@@ -144,10 +158,16 @@ extension BatteryAnalytics {
             }
         }
 
-        // 跌到 80% / 90%
-        let m80 = monthsUntil80(records: health)
+        // 跌到 80% / 90%（直接用已算好的 rate 与 latestHealth，不再走 monthsUntil80/latestHealth）
+        let m80: Double?
+        if let latest = latestHealth, let r = declineRate,
+           r > 0, latest.maximumCapacity > 80 {
+            m80 = (latest.maximumCapacity - 80) / r
+        } else {
+            m80 = nil
+        }
         var m90: Double?
-        if let latest = latestHealth(health), let r = rate,
+        if let latest = latestHealth, let r = declineRate,
            r > 0, latest.maximumCapacity > 90 {
             m90 = (latest.maximumCapacity - 90) / r
         }
