@@ -57,32 +57,26 @@ struct TrendDetailView: View {
     }
 
     /// 时间跨度（首尾日期间隔天数 +1，截图「14 天」）
-    private var spanDays: Int {
-        guard let first = healthPoints.first, let last = healthPoints.last else { return 0 }
+    private func spanDays(_ points: [(date: Date, value: Double)]) -> Int {
+        guard let first = points.first, let last = points.last else { return 0 }
         let days = Calendar.current.dateComponents([.day], from: first.date, to: last.date).day ?? 0
         return max(1, days + 1)
     }
 
     /// 健康度变化（首尾差值，截图「-0.10%」）
-    private var healthChange: Double? {
-        guard let first = healthPoints.first, let last = healthPoints.last else { return nil }
+    private func healthChange(_ points: [(date: Date, value: Double)]) -> Double? {
+        guard let first = points.first, let last = points.last else { return nil }
         return last.value - first.value
     }
 
     /// 容量变化（首尾差值，截图「-5 mAh」）
-    private var capacityChange: Double? {
-        guard let first = capacityPoints.first, let last = capacityPoints.last else { return nil }
+    private func capacityChange(_ points: [(date: Date, value: Double)]) -> Double? {
+        guard let first = points.first, let last = points.last else { return nil }
         return last.value - first.value
     }
 
-    private var healthStats: (avg: Double, hi: Double, lo: Double)? {
-        let values = healthPoints.map(\.value)
-        guard !values.isEmpty else { return nil }
-        return (values.reduce(0, +) / Double(values.count), values.max() ?? 0, values.min() ?? 0)
-    }
-
-    private var capacityStats: (avg: Double, hi: Double, lo: Double)? {
-        let values = capacityPoints.map(\.value)
+    private func stats(_ points: [(date: Date, value: Double)]) -> (avg: Double, hi: Double, lo: Double)? {
+        let values = points.map(\.value)
         guard !values.isEmpty else { return nil }
         return (values.reduce(0, +) / Double(values.count), values.max() ?? 0, values.min() ?? 0)
     }
@@ -102,12 +96,18 @@ struct TrendDetailView: View {
     }
 
     var body: some View {
+        // P0-4：派生数据（排序 + 按天去重）只算一次，各子视图共用；
+        // 计算属性每次访问都重排，body 内多处引用会重复执行
+        let healthPoints = self.healthPoints
+        let capacityPoints = self.capacityPoints
+        let chartHealth = Array(healthPoints.suffix(recentCount))
+        let chartCapacity = Array(capacityPoints.suffix(recentCount))
         ScrollView {
             VStack(spacing: 16) {
                 agingCard
-                healthTrendCard
-                capacityTrendCard
-                statsCard
+                healthTrendCard(points: chartHealth)
+                capacityTrendCard(points: chartCapacity)
+                statsCard(healthPoints: healthPoints, capacityPoints: capacityPoints)
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 32)
@@ -157,7 +157,7 @@ struct TrendDetailView: View {
 
     // MARK: - 健康度趋势
 
-    private var healthTrendCard: some View {
+    private func healthTrendCard(points: [(date: Date, value: Double)]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
                 Text("电池健康度趋势")
@@ -167,9 +167,11 @@ struct TrendDetailView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            trendChart(points: chartHealthPoints,
+            trendChart(points: points,
                        format: { String(format: "%.2f", $0) },
-                       domain: yDomain(chartHealthPoints, pad: 1.0, minSpan: 2.0))
+                       domain: yDomain(points, pad: 1.0, minSpan: 2.0),
+                       label: "最近7次健康度趋势",
+                       summary: chartSummary(points, unit: "%"))
             .frame(height: 200)
         }
         .padding(14)
@@ -193,7 +195,7 @@ struct TrendDetailView: View {
 
     // MARK: - 容量趋势
 
-    private var capacityTrendCard: some View {
+    private func capacityTrendCard(points: [(date: Date, value: Double)]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
                 Text("电池容量趋势")
@@ -203,9 +205,11 @@ struct TrendDetailView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            trendChart(points: chartCapacityPoints,
+            trendChart(points: points,
                        format: { "\(Int($0))" },
-                       domain: yDomain(chartCapacityPoints, pad: 5.0, minSpan: 20.0))
+                       domain: yDomain(points, pad: 5.0, minSpan: 20.0),
+                       label: "最近7次容量趋势",
+                       summary: chartSummary(points, unit: "mAh"))
             .frame(height: 200)
         }
         .padding(14)
@@ -228,14 +232,17 @@ struct TrendDetailView: View {
 
     // MARK: - 趋势分析数据
 
-    private var statsCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+    private func statsCard(healthPoints: [(date: Date, value: Double)],
+                           capacityPoints: [(date: Date, value: Double)]) -> some View {
+        let healthStats = stats(healthPoints)
+        let capacityStats = stats(capacityPoints)
+        return VStack(alignment: .leading, spacing: 12) {
             Text("趋势分析数据")
                 .font(.headline)
 
             // 时间跨度 / 数据点数量
             HStack {
-                statItem(title: "时间跨度", value: "\(spanDays)天")
+                statItem(title: "时间跨度", value: "\(spanDays(healthPoints))天")
                 Spacer()
                 statItem(title: "数据点数量", value: "\(healthPoints.count)个", alignment: .trailing)
             }
@@ -243,10 +250,10 @@ struct TrendDetailView: View {
             // 健康度变化 / 容量变化（红色，负向）
             HStack {
                 changeItem(title: "健康度变化",
-                           value: healthChange.map { String(format: "%+.2f%%", $0) } ?? "--")
+                           value: healthChange(healthPoints).map { String(format: "%+.2f%%", $0) } ?? "--")
                 Spacer()
                 changeItem(title: "容量变化",
-                           value: capacityChange.map { "\(Int($0)) mAh" } ?? "--",
+                           value: capacityChange(capacityPoints).map { "\(Int($0)) mAh" } ?? "--",
                            alignment: .trailing)
             }
 
@@ -312,6 +319,16 @@ struct TrendDetailView: View {
         }
     }
 
+    /// 图表的 VoiceOver 摘要（A11Y-2）：首尾值 + 变化方向与幅度
+    private func chartSummary(_ points: [(date: Date, value: Double)], unit: String) -> String {
+        guard let first = points.first, let last = points.last else { return "暂无数据" }
+        let delta = last.value - first.value
+        let arrow = delta >= 0 ? "上升" : "下降"
+        return String(format: "从%.2f%@到%.2f%@，%@%.2f%@",
+                      first.value, unit, last.value, unit,
+                      arrow, abs(delta), unit)
+    }
+
     /// 折线图：绿色加粗折线 + 折线下淡绿渐变面积 + 数据点 + 逐点胶囊数值标签。
     /// 只显示最近 7 次记录（由调用方传入），隐藏 XY 轴坐标值（刻度杂乱观感差）。
     ///
@@ -322,7 +339,9 @@ struct TrendDetailView: View {
     /// 注意 iOS 26 的 `plotFrame` 是 `Anchor<CGRect>?`，须用 GeometryReader 解引用。
     private func trendChart(points: [(date: Date, value: Double)],
                             format: @escaping (Double) -> String,
-                            domain: ClosedRange<Double>) -> some View {
+                            domain: ClosedRange<Double>,
+                            label: String,
+                            summary: String) -> some View {
         // X 轴范围：首尾日期；单点或空时撑开一天，避免 scale 退化
         let xRange: ClosedRange<Date>
         if let first = points.first?.date, let last = points.last?.date {
@@ -389,6 +408,9 @@ struct TrendDetailView: View {
                 }
             }
         }
+        // 无障碍（A11Y-2）：图表是纯图像，对 VoiceOver 提供文字摘要
+        .accessibilityLabel(label)
+        .accessibilityValue(summary)
     }
 
     /// Y 轴范围：数据自适应 + 上下余量；数值相同（贴成一条线）时撑开最小跨度。
