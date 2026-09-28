@@ -166,7 +166,10 @@ final class BatteryViewModel: ObservableObject {
         if sample.state.isCharging {
             store.updateActiveSessionPeak(level: sample.level)
         }
-        refresh()
+        // P0-2：采样期间健康/会话/分析记录根本不会变，只增量同步采样数组并
+        // 重算实时字段；不再全量 refresh()（4 数组重赋值 + 迁移检查每 15 秒空跑一次）
+        samples = store.samples
+        recalc()
     }
 
     /// 充电状态翻转时，开启或结算一次充电会话
