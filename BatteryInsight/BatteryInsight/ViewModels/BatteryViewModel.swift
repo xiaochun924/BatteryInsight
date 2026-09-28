@@ -159,6 +159,10 @@ final class BatteryViewModel: ObservableObject {
             fieldSources: old.fieldSources)
     }
 
+    /// P0-2：采样 15 秒一条，每次只更新实时字段 + 采样数组 + 速率重算；
+    /// 不再全量 refresh 四个 @Published 数组（健康度/分析日志/会话在采样期间根本没变，
+    /// 全量重赋值等于无谓触发 4 次 objectWillChange，UI 被高频无效刷新）。
+    /// 全量刷新保留给真正数据变化的动作：导入、删除、充电状态翻转、退前台补刷。
     private func handle(_ sample: BatterySample) {
         level = sample.level
         state = sample.state
@@ -166,7 +170,8 @@ final class BatteryViewModel: ObservableObject {
         if sample.state.isCharging {
             store.updateActiveSessionPeak(level: sample.level)
         }
-        refresh()
+        samples = store.samples
+        recalc()
     }
 
     /// 充电状态翻转时，开启或结算一次充电会话
