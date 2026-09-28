@@ -120,17 +120,8 @@ struct TrendDetailView: View {
                         leading: { GlassCircleButton(icon: "chevron.left") { dismiss() } })
         }
         .navigationDestination(isPresented: $showingLifetime) { LifetimePredictionView() }
-        // 系统导航栏已隐藏，手动恢复右滑返回手势；
-        // 用 simultaneousGesture 避免与顶栏按钮的点击手势竞争
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 25)
-                .onEnded { value in
-                    if value.translation.width > 60,
-                       abs(value.translation.width) > abs(value.translation.height) {
-                        dismiss()
-                    }
-                }
-        )
+        // 系统导航栏已隐藏，手动恢复右滑返回手势（统一组件，见 Components.swift）
+        .swipeToDismiss(dismiss)
     }
 
     // MARK: - 老化状态卡
@@ -401,7 +392,7 @@ struct TrendDetailView: View {
     }
 
     /// Y 轴范围：数据自适应 + 上下余量；数值相同（贴成一条线）时撑开最小跨度。
-    /// 参数不能用 min/max 命名——会遮蔽系统同名函数导致编译错误。
+    /// 参数不能用 min/max 命名——会遮蔽同名系统函数导致编译错误。
     private func yDomain(_ points: [(date: Date, value: Double)],
                          pad: Double,
                          minSpan: Double) -> ClosedRange<Double> {
