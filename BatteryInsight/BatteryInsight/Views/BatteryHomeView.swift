@@ -17,7 +17,8 @@ import Charts
 /// 页面转场动画：记录详情/趋势分析从卡片 zoom 放大打开、反向缩回关闭；
 /// 寿命预测从「详情」胶囊 zoom 打开；周期报告走系统默认推入。
 struct BatteryHomeView: View {
-    @EnvironmentObject private var vm: BatteryViewModel
+    /// API-2：@Observable 环境注入（替代 @EnvironmentObject）
+    @Environment(BatteryViewModel.self) private var vm
 
     @State private var showingReport = false
     /// 寿命预测弹窗（趋势卡「详情」按钮打开）
