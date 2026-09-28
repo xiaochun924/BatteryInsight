@@ -96,7 +96,7 @@ struct BatteryHomeView: View {
                             .font(.system(size: 17, weight: .semibold))
                             .foregroundColor(.primary)
                             .frame(width: 40, height: 40)
-                            .glassEffect(.regular.interactive(), in: .circle)
+                            .glassEffect(.thin.interactive(), in: .circle)
                             .contentShape(Rectangle())
                             // VoiceOver：纯图标菜单按钮必须可读
                             .accessibilityLabel("更多")
@@ -113,7 +113,7 @@ struct BatteryHomeView: View {
                                 .foregroundColor(.primary)
                                 .padding(.horizontal, 14)
                                 .frame(height: 40)
-                                .glassEffect(.regular.interactive(), in: .capsule)
+                                .glassEffect(.thin.interactive(), in: .capsule)
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
@@ -361,14 +361,16 @@ struct BatteryHomeView: View {
                     y: .value(metric == .health ? "健康度" : "容量", point.value)
                 )
                 .foregroundStyle(Color.green)
-                // 每个数据点上方标数值胶囊；已限最近 7 次记录，点数 ≤ 7 全部标注，不会糊
+                // 每个数据点上方标数值胶囊；已限最近 7 次记录，点数 ≤ 7 全部标注，不会糊。
+                // 用浅绿纯色底替代 thinMaterial：数值胶囊面积小，磨砂与纯色观感几乎无差，
+                // 但滚动时 7 个 material 采样器会随图表重绘反复采样，纯色零采样开销
                 .annotation(position: .top, spacing: 6) {
                     Text(label(for: point.value))
                         .font(.caption2.bold())
                         .foregroundStyle(.green)
                         .padding(.horizontal, 5)
                         .padding(.vertical, 1)
-                        .background(.thinMaterial, in: Capsule())
+                        .background(Color.green.opacity(0.12), in: Capsule())
                 }
             }
         }
