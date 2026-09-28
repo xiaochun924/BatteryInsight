@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 /// 本地数据存储（demo 使用 UserDefaults + Codable）。
 /// 生产环境建议换成 SwiftData / CoreData，采样数据量会随时间持续增长。
