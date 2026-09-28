@@ -21,8 +21,4 @@ struct HealthRecord: Codable, Identifiable, Equatable, Hashable {
         self.cycleCount = cycleCount
         self.note = note
     }
-
-    var dateText: String {
-        date.formatted(.dateTime.year().month().day())
-    }
 }
