@@ -7,10 +7,7 @@ import SwiftUI
 /// 全部使用 iOS 26 官方 Liquid Glass 套件：
 /// - `GlassEffectContainer`：让左右按钮与中间胶囊共享玻璃采样区，效果一致
 /// - `.glassEffect(.clear, in: .capsule)`：胶囊标题
-/// - `.glassEffect(.clear.interactive(), in: .circle)`：可交互圆形按钮
-///   用 clear 而非 regular：真机滚动时 regular 档玻璃对下方内容持续采样，
-///   多页面滑动掉帧；clear 是最轻档（纯透明），圆形按钮观感几乎无差。
-///   注：Glass 样式只有 clear/regular/thick/ultraThick，无 thin 档
+/// - `.glassEffect(.regular.interactive(), in: .circle)`：可交互圆形按钮
 struct GlassTopBar<Leading: View, Trailing: View>: View {
     let title: String
     /// 水平内边距：全屏页 16；sheet 弹出页加大到 28，避开 iOS 26 sheet 顶部大圆角
@@ -83,7 +80,7 @@ struct GlassCircleButton: View {
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundColor(tint)
                 .frame(width: size, height: size)
-                .glassEffect(.clear.interactive(), in: .circle)
+                .glassEffect(.regular.interactive(), in: .circle)
                 // iOS 26 按钮可点击区域默认只覆盖内容（图标本身），
                 // contentShape 让整个圆形玻璃底都可点
                 .contentShape(Rectangle())
