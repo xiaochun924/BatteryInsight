@@ -59,11 +59,9 @@ struct RootView: View {
             .tabItem { Label(HomeTab.adapter.rawValue, systemImage: HomeTab.adapter.icon) }
             .tag(HomeTab.adapter)
         }
-        // iOS 26 Tab 栏最小化：用 onScrollEdge 而非 onScrollDown——
-        // onScrollDown 会在内容滚动过程中实时收放 Tab 栏（每帧几何跟踪），
-        // 是「每个页面滑动都掉帧」的全局因素之一；onScrollEdge 只在滚到
-        // 边缘时收起/展开，保留 iOS 26 官方行为但滚动过程零跟踪开销
-        .tabBarMinimizeBehavior(.onScrollEdge)
+        // iOS 26 Tab 栏最小化：内容滚动时收放 Tab 栏（官方默认行为）。
+        // 注：此前的 onScrollEdge 试改已按用户要求撤销——保持 onScrollDown 原观感
+        .tabBarMinimizeBehavior(.onScrollDown)
         .environment(vm)
         .onChange(of: scenePhase) { _, phase in
             // 后台期间定时器被系统挂起，回到前台立即补一次刷新
