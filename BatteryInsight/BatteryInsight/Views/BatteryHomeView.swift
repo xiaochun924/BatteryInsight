@@ -45,61 +45,35 @@ struct BatteryHomeView: View {
         var id: String { rawValue }
     }
 
-    // MARK: - 数据
-
-    private var sortedHealth: [HealthRecord] {
-        vm.healthRecords.sorted { $0.date < $1.date }
-    }
-
-    /// 列表按时间倒序展示。显式转成数组：`reversed()` 的下标不是 Int，
-    /// 不能直接用于 onDelete 的 IndexSet 取值
-    private var reversedHealth: [HealthRecord] {
-        Array(sortedHealth.reversed())
-    }
-
-    private var latest: HealthRecord? { sortedHealth.last }
-
-    private var sortedAnalytics: [AnalyticsRecord] {
-        vm.analyticsRecords.sorted { $0.date < $1.date }
-    }
-
-    private var latestAnalytics: AnalyticsRecord? { sortedAnalytics.last }
-
-    /// 是否有实际容量数据（决定图表卡要不要显示「容量」切换段）
-    private var hasCapacityData: Bool {
-        sortedAnalytics.contains { $0.nominalChargeCapacity != nil }
-    }
-
-    /// 图表数据点。同一天可能有多条记录（手动连加、重复导入），
-    /// 按天去重（保留当天最后一条），避免 ForEach 出现重复 ID。
-    /// 图表只显示最近 7 次记录（干净折线，不堆历史远点）
-    private var chartPoints: [(date: Date, value: Double)] {
-        let raw: [(Date, Double)]
-        switch metric {
-        case .health:
-            raw = sortedHealth.map { ($0.date, $0.maximumCapacity) }
-        case .capacity:
-            raw = sortedAnalytics.compactMap { record in
-                record.nominalChargeCapacity.map { (record.date, Double($0)) }
-            }
-        }
-        var byDay: [Date: (date: Date, value: Double)] = [:]
-        for point in raw {
-            let day = Calendar.current.startOfDay(for: point.0)
-            byDay[day] = (point.0, point.1)
-        }
-        return Array(byDay.values.sorted { $0.date < $1.date }.suffix(7))
-    }
-
     var body: some View {
+        // P0-4（补完）：全页数据只在 body 顶部整理一次，子视图全部传参。
+        // 排序、按天去重、同天分析日志字典都只算一遍——
+        // 原来 sortedHealth/sortedAnalytics 是计算属性，每次访问都重新排序，
+        // 每条记录卡又要对 sortedAnalytics 重新排序 + 线性扫描（analyticsFor），
+        // 记录一多（几百上千条）首页渲染就是 O(n²)，直接卡爆。
+        let health = vm.healthRecords.sorted { $0.date < $1.date }
+        let analytics = vm.analyticsRecords.sorted { $0.date < $1.date }
+        let analyticsByDay = Dictionary(
+            analytics.map { (Calendar.current.startOfDay(for: $0.date), $0) },
+            uniquingKeysWith: { _, new in new }
+        )
+        return content(health: health, analytics: analytics, analyticsByDay: analyticsByDay)
+    }
+
+    // MARK: - 页面主体（所有子视图收参，不再各自访问 vm 重排）
+
+    private func content(health: [HealthRecord],
+                         analytics: [AnalyticsRecord],
+                         analyticsByDay: [Date: AnalyticsRecord]) -> some View {
         Group {
-            if sortedHealth.isEmpty && sortedAnalytics.isEmpty {
+            if health.isEmpty && analytics.isEmpty {
                 emptyState
             } else {
                 List {
-                    deviceCard
-                    trendCard
-                    recordsSection
+                    deviceCard(latest: health.last,
+                               latestAnalytics: analytics.last)
+                    trendCard(health: health, analytics: analytics)
+                    recordsSection(health: health, analyticsByDay: analyticsByDay)
                 }
             }
         }
@@ -184,7 +158,8 @@ struct BatteryHomeView: View {
 
     // MARK: - 设备信息卡（参考截图第一张卡片：一行一条）
 
-    private var deviceCard: some View {
+    private func deviceCard(latest: HealthRecord?,
+                            latestAnalytics: AnalyticsRecord?) -> some View {
         Section {
             infoRow(
                 icon: "iphone.gen3", tint: .green,
@@ -217,7 +192,7 @@ struct BatteryHomeView: View {
                     title: "估算温度",
                     accessory: valueText(String(format: "约 %.0f ℃", temp), color: .primary))
             }
-            if let text = capacityText {
+            if let text = capacityText(latestAnalytics) {
                 infoRow(
                     icon: "bolt.batteryblock", tint: .teal,
                     title: "电池容量",
@@ -257,10 +232,10 @@ struct BatteryHomeView: View {
     }
 
     /// 电池容量文案：额定容量 + 实时容量拼接（移出 ViewBuilder，避免 Void 表达式无法转成 View）
-    private var capacityText: String? {
-        guard let nominal = latestAnalytics?.nominalChargeCapacity else { return nil }
+    private func capacityText(_ latest: AnalyticsRecord?) -> String? {
+        guard let nominal = latest?.nominalChargeCapacity else { return nil }
         var text = "\(nominal) mAh"
-        if let raw = latestAnalytics?.rawMaxCapacity {
+        if let raw = latest?.rawMaxCapacity {
             text += " / 实时 \(raw) mAh"
         }
         return text
@@ -268,12 +243,20 @@ struct BatteryHomeView: View {
 
     // MARK: - 趋势图表卡（参考截图第二张卡片）
 
-    private var trendCard: some View {
-        Section {
+    private func trendCard(health: [HealthRecord],
+                           analytics: [AnalyticsRecord]) -> some View {
+        // P0-4：衰减速率只算一次，头部 Label 与底部摘要共用；
+        // 原来 trendCard 头部与 summaryText 各调一次 healthDeclinePerMonth（重复排序）
+        let rate = health.isEmpty ? nil : BatteryAnalytics.healthDeclinePerMonth(health)
+        let summary = summaryText(health: health, rate: rate)
+        let points = chartPoints(health: health, analytics: analytics)
+        let hasCapacity = analytics.contains { $0.nominalChargeCapacity != nil }
+
+        return Section {
             // 头部：「健康 / 容量」切换 + 衰减速率 + 详细分析入口
             VStack(spacing: 12) {
                 HStack {
-                    if hasCapacityData {
+                    if hasCapacity {
                         Picker("指标", selection: $metric) {
                             ForEach(ChartMetric.allCases) { Text($0.rawValue).tag($0) }
                         }
@@ -285,7 +268,7 @@ struct BatteryHomeView: View {
                     }
 
                     // 对应截图布局：衰减速率紧跟分段（「↘ -0.10%」红色向下箭头）
-                    if metric == .health, let rate = BatteryAnalytics.healthDeclinePerMonth(vm.healthRecords) {
+                    if metric == .health, let rate {
                         Label(String(format: "%.2f", rate), systemImage: "arrow.down.right")
                             .font(.subheadline.bold())
                             .foregroundStyle(.red)
@@ -299,7 +282,7 @@ struct BatteryHomeView: View {
                 Button {
                     showingTrend = true
                 } label: {
-                    trendChart
+                    trendChart(points, hasCapacity: hasCapacity)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -314,7 +297,7 @@ struct BatteryHomeView: View {
 
                 // 底部摘要行（对应截图：「⚖️ 正常老化 · 约 2 年 9 个月到 80%」+ 右侧「详情」入口）
                 HStack(spacing: 6) {
-                    if let summary = summaryText {
+                    if let summary {
                         Image(systemName: "scalemass")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
@@ -345,9 +328,9 @@ struct BatteryHomeView: View {
         }
     }
 
-    private var trendChart: some View {
-        let points = chartPoints
-        return Chart {
+    private func trendChart(_ points: [(date: Date, value: Double)],
+                            hasCapacity: Bool) -> some View {
+        Chart {
             ForEach(points, id: \.date) { point in
                 // 折线下方的淡绿渐变面积（视觉层次，告别单调折线；与折线同色系，
                 // 顶部靠线处较深、向下渐隐，突出折线走势）
@@ -435,11 +418,9 @@ struct BatteryHomeView: View {
     }
 
     /// 底部摘要：按当前衰减速率估算降到 80% 的时间。
-    /// P0-4：原实现里 monthsUntil80 会再内部调用一次 healthDeclinePerMonth（重复排序），
-    /// 这里直接取一次 rate 并自算月数，衰减速率全程只算一遍
-    private var summaryText: String? {
-        guard metric == .health, let latest = latest else { return nil }
-        let rate = BatteryAnalytics.healthDeclinePerMonth(vm.healthRecords)
+    /// P0-4：rate 由 trendCard 顶部算一次传入，这里不再重复调用 healthDeclinePerMonth
+    private func summaryText(health: [HealthRecord], rate: Double?) -> String? {
+        guard metric == .health, let latest = health.last else { return nil }
         let state = (rate ?? 0) <= 1.0 ? "正常老化" : "老化偏快"
         guard let rate, rate > 0, latest.maximumCapacity > 80 else { return nil }
         let months = (latest.maximumCapacity - 80) / rate
@@ -454,14 +435,19 @@ struct BatteryHomeView: View {
 
     // MARK: - 检测记录（参考截图底部的每日卡片）
 
-    private var recordsSection: some View {
-        Section("检测记录（\(sortedHealth.count) 条）") {
-            ForEach(reversedHealth) { record in
+    private func recordsSection(health: [HealthRecord],
+                                analyticsByDay: [Date: AnalyticsRecord]) -> some View {
+        // 列表按时间倒序展示。显式转成数组：`reversed()` 的下标不是 Int，
+        // 不能直接用于 onDelete 的 IndexSet 取值
+        let reversed = Array(health.reversed())
+        return Section("检测记录（\(health.count) 条）") {
+            ForEach(reversed) { record in
                 // 点任意一条记录 → push 详情页（电池数据 / 其他数据 分段），zoom 转场
                 Button {
                     selectedRecord = record
                 } label: {
-                    recordCard(record)
+                    recordCard(record,
+                               analytics: analyticsByDay[Calendar.current.startOfDay(for: record.date)])
                 }
                 .buttonStyle(.plain)
                 // 每条记录已有独立卡片底色，隐藏行间分隔线
@@ -475,25 +461,18 @@ struct BatteryHomeView: View {
                 }
             }
             .onDelete { offsets in
-                offsets.map { reversedHealth[$0] }
+                offsets.map { reversed[$0] }
                     .forEach { vm.deleteHealth($0) }
             }
         }
         .navigationDestination(item: $selectedRecord) { record in
-            RecordDetailView(record: record, analytics: analyticsFor(record))
+            RecordDetailView(record: record,
+                             analytics: analyticsByDay[Calendar.current.startOfDay(for: record.date)])
                 .navigationTransition(.zoom(sourceID: record.id, in: namespace))
         }
     }
 
-    /// 取该条手动记录同一天的分析日志（详情页的数据源之一）
-    private func analyticsFor(_ record: HealthRecord) -> AnalyticsRecord? {
-        let day = Calendar.current.startOfDay(for: record.date)
-        return sortedAnalytics.first { Calendar.current.startOfDay(for: $0.date) == day }
-    }
-
-    private func recordCard(_ record: HealthRecord) -> some View {
-        // 同一天的分析日志（温度 / 循环 / 累计运行时长的数据源）
-        let analytics = analyticsFor(record)
+    private func recordCard(_ record: HealthRecord, analytics: AnalyticsRecord?) -> some View {
         // 循环次数：手动记录优先，同天分析日志兜底。
         // 注意 analytics?.cycleCount 是 Int??（嵌套可选项），逐层 if-let 解包最稳；
         // 且赋值语句必须放在 ViewBuilder 闭包之外（闭包内 if 分支只能是 View）
@@ -588,6 +567,29 @@ struct BatteryHomeView: View {
         return "\(total / 3600)时\(total % 3600 / 60)分"
     }
 
+    /// 图表数据点。同一天可能有多条记录（手动连加、重复导入），
+    /// 按天去重（保留当天最后一条），避免 ForEach 出现重复 ID。
+    /// 图表只显示最近 7 次记录（干净折线，不堆历史远点）。
+    /// P0-4：入参已是排序后的数组，这里只做一次线性处理
+    private func chartPoints(health: [HealthRecord],
+                             analytics: [AnalyticsRecord]) -> [(date: Date, value: Double)] {
+        let raw: [(Date, Double)]
+        switch metric {
+        case .health:
+            raw = health.map { ($0.date, $0.maximumCapacity) }
+        case .capacity:
+            raw = analytics.compactMap { record in
+                record.nominalChargeCapacity.map { (record.date, Double($0)) }
+            }
+        }
+        var byDay: [Date: (date: Date, value: Double)] = [:]
+        for point in raw {
+            let day = Calendar.current.startOfDay(for: point.0)
+            byDay[day] = (point.0, point.1)
+        }
+        return Array(byDay.values.sorted { $0.date < $1.date }.suffix(7))
+    }
+
     private func rating(_ health: Double) -> (text: String, color: Color) {
         switch health {
         case 95...:  return ("优秀", .green)
@@ -631,7 +633,7 @@ struct BatteryHomeView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    /// 导入入口：已配置快捷指令 → 运行快捷指令（快捷指令内选择文件并打开本 App）；
+    /// 导入入口：已配置快捷指令 → 运行快捷指令（快捷指令内选择文件并传入本 App）；
     /// 未配置或打开失败 → 直接弹系统文件选择器兜底
     private func openImport() {
         let name = shortcutName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -646,7 +648,6 @@ struct BatteryHomeView: View {
         }
         UIApplication.shared.open(url)
     }
-
 }
 
 // MARK: - 解析中遮罩
