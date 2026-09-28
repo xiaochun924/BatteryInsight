@@ -69,7 +69,7 @@ struct BatteryReportView: View {
 
             Spacer()
 
-            // 下一个月：不可超过当月
+            // 下一个月：不可超过当月（置灰且不可点）
             Button {
                 withAnimation { month = month == 12 ? 1 : month + 1; if month == 1 { year += 1 } }
             } label: {
@@ -77,7 +77,8 @@ struct BatteryReportView: View {
                     .font(.body.bold())
                     .foregroundStyle(isFuture ? .tertiary : .primary)
                     .frame(width: 36, height: 36)
-                    .background(isFuture ? Color.clear : AnyShapeStyle(.regularMaterial), in: Circle())
+                    // 三元分支统一包成 AnyShapeStyle，避免 Color/AnyShapeStyle 类型不匹配
+                    .background(isFuture ? AnyShapeStyle(Color.clear) : AnyShapeStyle(.regularMaterial), in: Circle())
             }
             .buttonStyle(.plain)
             .disabled(isFuture)
@@ -206,9 +207,9 @@ struct BatteryReportView: View {
         guard let range = cal.dateInterval(of: .month, for: cal.date(from: DateComponents(year: year, month: month)) ?? Date())
         else { return .empty }
 
-        // 充电时长：从充电会话统计（分钟）
+        // 充电时长：从充电会话统计（duration 是秒，转分钟）
         for session in vm.sessions where session.startDate >= range.start && session.startDate < range.end {
-            s.chargingMinutes += session.durationMinutes
+            s.chargingMinutes += session.duration / 60
             s.chargingCount += 1
         }
 
