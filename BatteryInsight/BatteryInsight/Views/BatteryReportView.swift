@@ -98,23 +98,27 @@ struct BatteryReportView: View {
     private var statsGrid: some View {
         VStack(spacing: 12) {
             HStack(spacing: 12) {
-                statCard(title: "充电时长", value: "\(Int(currentMonthStats.chargingMinutes / 60))小时",
-                         unit: "\(Int(currentMonthStats.chargingMinutes % 60))分钟",
+                statCard(title: "充电时长",
+                         value: "\(Int(currentMonthStats.chargingMinutes.rounded()) / 60)小时",
+                         unit: "\(Int(currentMonthStats.chargingMinutes.rounded()) % 60)分钟",
                          icon: "bolt.fill", tint: .green)
                 statCard(title: "平均温度", value: String(format: "%.1f", currentMonthStats.avgTemp),
                          unit: "℃", icon: "thermometer.medium", tint: .orange)
-                statCard(title: "亮屏时长", value: "\(Int(currentMonthStats.screenOnSeconds / 3600))小时",
-                         unit: "\(Int(currentMonthStats.screenOnSeconds % 3600 / 60))分钟",
+                statCard(title: "亮屏时长",
+                         value: "\(Int(currentMonthStats.screenOnSeconds.rounded()) / 3600)小时",
+                         unit: "\(Int(currentMonthStats.screenOnSeconds.rounded()) % 3600 / 60)分钟",
                          icon: "eye.fill", tint: .blue)
             }
             HStack(spacing: 12) {
-                statCard(title: "充电时长", value: "\(Int(lastMonthStats.chargingMinutes / 60))小时",
-                         unit: "\(Int(lastMonthStats.chargingMinutes % 60))分钟",
+                statCard(title: "充电时长",
+                         value: "\(Int(lastMonthStats.chargingMinutes.rounded()) / 60)小时",
+                         unit: "\(Int(lastMonthStats.chargingMinutes.rounded()) % 60)分钟",
                          icon: "bolt.fill", tint: .green, isDimmed: true)
                 statCard(title: "平均温度", value: String(format: "%.1f", lastMonthStats.avgTemp),
                          unit: "℃", icon: "thermometer.medium", tint: .orange, isDimmed: true)
-                statCard(title: "亮屏时长", value: "\(Int(lastMonthStats.screenOnSeconds / 3600))小时",
-                         unit: "\(Int(lastMonthStats.screenOnSeconds % 3600 / 60))分钟",
+                statCard(title: "亮屏时长",
+                         value: "\(Int(lastMonthStats.screenOnSeconds.rounded()) / 3600)小时",
+                         unit: "\(Int(lastMonthStats.screenOnSeconds.rounded()) % 3600 / 60)分钟",
                          icon: "eye.fill", tint: .blue, isDimmed: true)
             }
         }
@@ -184,10 +188,12 @@ struct BatteryReportView: View {
     // MARK: - 数据口径
 
     private struct MonthStats {
+        /// 充电时长累计（分钟，Double 累加；展示时先取整再算 时/分）
         var chargingMinutes: Double = 0
         var chargingCount: Int = 0
         var avgTemp: Double = 0
         var maxTemp: Double = 0
+        /// 亮屏时长累计（秒，Double 累加；展示时先取整再算 时/分）
         var screenOnSeconds: Double = 0
         var healthText = "--"
 
@@ -234,16 +240,28 @@ struct BatteryReportView: View {
         return stats(for: m, year: y)
     }
 
+    /// 分钟（Double）→ 「X小时Y分钟」（先取整再整除/取模，避免浮点 %）
+    private func hoursMinutes(fromMinutes minutes: Double) -> String {
+        let total = Int(minutes.rounded())
+        return "\(total / 60)小时\(total % 60)分钟"
+    }
+
+    /// 秒（Double）→ 「X小时Y分钟」
+    private func hoursMinutes(fromSeconds seconds: Double) -> String {
+        let total = Int(seconds.rounded())
+        return "\(total / 3600)小时\(total % 3600 / 60)分钟"
+    }
+
     // MARK: - 分享
 
     private func shareReport() {
         let lines = [
             "电池周期报告（\(year)年\(month)月）",
             "",
-            "本月充电：\(Int(currentMonthStats.chargingMinutes / 60))小时\(Int(currentMonthStats.chargingMinutes % 60))分钟，共 \(currentMonthStats.chargingCount) 次",
+            "本月充电：\(hoursMinutes(fromMinutes: currentMonthStats.chargingMinutes))，共 \(currentMonthStats.chargingCount) 次",
             "平均温度：\(String(format: "%.1f", currentMonthStats.avgTemp)) ℃",
             "最高温度：\(String(format: "%.1f", currentMonthStats.maxTemp)) ℃",
-            "亮屏时长：\(Int(currentMonthStats.screenOnSeconds / 3600))小时\(Int(currentMonthStats.screenOnSeconds % 3600 / 60))分钟",
+            "亮屏时长：\(hoursMinutes(fromSeconds: currentMonthStats.screenOnSeconds))",
             "健康度：\(currentMonthStats.healthText)",
         ]
         let text = lines.joined(separator: "\n")
