@@ -83,21 +83,3 @@ struct CardContainer<Content: View>: View {
             }
     }
 }
-
-// MARK: - 统一卡片样式修饰符（H-2）
-
-/// 链式写法的统一卡片外观，与 `CardContainer` 等价：
-/// 圆角 16 continuous + 磨砂玻璃白底 + 内容左对齐。
-///
-/// 供各页面 `.cardStyle()` 使用（BatteryReportView / LifetimePredictionView 等）。
-/// 有专属底色的页面（趋势页淡绿渐变、主页记录卡 ultraThinMaterial + 描边）
-/// 保留各自实现，不套用本修饰符。
-extension View {
-    func cardStyle() -> some View {
-        self
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(AnyShapeStyle(.regularMaterial),
-                        in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
-}

@@ -8,9 +8,7 @@ import SwiftUI
 ///   - 「发热」：系统发热状态 / 热力图 / 温度传感器（ThermalView）
 ///   - 「适配器」：USB-PD 握手 / 供电档位 / 实时供电轨（AdapterView）
 struct RootView: View {
-    /// API-2：@Observable 视图用 @State 持有（替代 @StateObject），
-    /// 向下注入用 .environment(vm)（替代 .environmentObject(vm)）
-    @State private var vm = BatteryViewModel()
+    @StateObject private var vm = BatteryViewModel()
     @Environment(\.scenePhase) private var scenePhase
     /// 从「文件」App / 分享菜单用本 App 打开日志后的解析结果
     @State private var showingOpenResult = false
@@ -59,11 +57,10 @@ struct RootView: View {
             .tabItem { Label(HomeTab.adapter.rawValue, systemImage: HomeTab.adapter.icon) }
             .tag(HomeTab.adapter)
         }
-        // iOS 26 Tab 栏最小化：内容滚动时收放 Tab 栏（官方默认行为）。
-        // 注：此前的 onScrollEdge 试改已按用户要求撤销——保持 onScrollDown 原观感
+        // iOS 26 官方 Tab 栏最小化行为：内容向下滚动时 Tab 栏自动收成一条胶囊
         .tabBarMinimizeBehavior(.onScrollDown)
-        .environment(vm)
-        .onChange(of: scenePhase) { _, phase in
+        .environmentObject(vm)
+        .onChange(of: scenePhase) { phase in
             // 后台期间定时器被系统挂起，回到前台立即补一次刷新
             if phase == .active { vm.refresh() }
         }

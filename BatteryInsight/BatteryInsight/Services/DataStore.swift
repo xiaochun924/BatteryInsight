@@ -1,25 +1,19 @@
 import Foundation
-import Observation
 
 /// 本地数据存储（demo 使用 UserDefaults + Codable）。
 /// 生产环境建议换成 SwiftData / CoreData，采样数据量会随时间持续增长。
 ///
-/// Swift 6：DataStore 是共享单例、所有状态都在同一隔离域被读写，
+/// Swift 6：DataStore 是共享单例、所有 `@Published` 状态都在同一隔离域被读写，
 /// 唯一调用方 `BatteryViewModel` 是 `@MainActor`，因此整体标记为主线程隔离，
 /// 满足严格并发检查且不引入跨线程访问同一份可变数据的问题。
-///
-/// API-2：ObservableObject + @Published → @Observable 宏（iOS 17+）。
-/// 四个数组当前仅被 ViewModel 读取（视图统一走 vm），不直接被视图观察；
-/// @Observable 让状态与宏生态一致，去掉 @Published 包装。
-@Observable
 @MainActor
-final class DataStore {
+final class DataStore: ObservableObject {
     static let shared = DataStore()
 
-    private(set) var samples: [BatterySample] = []
-    private(set) var sessions: [ChargingSession] = []
-    private(set) var healthRecords: [HealthRecord] = []
-    private(set) var analyticsRecords: [AnalyticsRecord] = []
+    @Published private(set) var samples: [BatterySample] = []
+    @Published private(set) var sessions: [ChargingSession] = []
+    @Published private(set) var healthRecords: [HealthRecord] = []
+    @Published private(set) var analyticsRecords: [AnalyticsRecord] = []
 
     private let kSamples   = "bi.samples"
     private let kSessions  = "bi.sessions"
@@ -27,30 +21,16 @@ final class DataStore {
     private let kAnalytics = "bi.analytics"
     /// 采样上限，超出后丢弃最旧数据，避免无限增长
     private let sampleCap = 20000
-    /// 是否有待落盘的脏数据（采样 15s 一条，不每次都全量 encode，见 P0-1）
-    private var dirty = false
 
     private init() { load() }
 
     // MARK: - 采样
 
-    /// P0-1：采样每 15 秒一条，samples 上限 20000 条——每次都主线程全量 JSON 编码
-    /// 会把 App 越用越卡。这里只改内存数组并标记脏数据，真正的落盘推迟到退后台
-    /// （BatteryInsightApp 的 scenePhase 回调调 flushIfNeeded）或其它低频关键动作。
-    /// 电量采样丢失 15 秒对用户无感知，实时性不敏感。
     func addSample(_ s: BatterySample) {
         samples.append(s)
         if samples.count > sampleCap {
             samples.removeFirst(samples.count - sampleCap)
         }
-        dirty = true
-    }
-
-    /// 把积压的采样一次性落盘（退后台 / 关键节点调用）。
-    /// 此时是后台时机，一次性 encode 20000 条的几毫秒~几百毫秒阻塞用户无感。
-    func flushIfNeeded() {
-        guard dirty else { return }
-        dirty = false
         save()
     }
 
@@ -167,8 +147,6 @@ final class DataStore {
         if let d = try? enc.encode(sessions)        { UserDefaults.standard.set(d, forKey: kSessions) }
         if let d = try? enc.encode(healthRecords)   { UserDefaults.standard.set(d, forKey: kHealth) }
         if let d = try? enc.encode(analyticsRecords){ UserDefaults.standard.set(d, forKey: kAnalytics) }
-        // 全量落盘完成，清掉采样脏标记
-        dirty = false
     }
 
     private func load() {
