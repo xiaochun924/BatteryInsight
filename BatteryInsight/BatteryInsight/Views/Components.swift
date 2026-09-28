@@ -29,51 +29,22 @@ extension Date {
     var chineseDateTimeText: String { Date.cnFull.string(from: self) }
 }
 
-/// 指标卡片。原先定义在 DashboardView 里，随概览页一起删除会连带弄丢，
-/// 故抽到独立文件供健康 / 趋势复用。
-struct MetricCard: View {
-    let title: String
-    let value: String
-    let unit: String
-    let icon: String
-    let tint: Color
+// MARK: - 右滑返回（隐藏导航栏后恢复系统手势）
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: icon).foregroundStyle(tint)
-                Text(title).font(.subheadline).foregroundStyle(.secondary)
-            }
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text(value).font(.title2.bold())
-                Text(unit).font(.caption).foregroundStyle(.secondary)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
-    }
-}
-
-/// 带图标的说明卡片
-struct HintCard<Content: View>: View {
-    let icon: String
-    let title: String
-    @ViewBuilder var content: Content
-
-    var body: some View {
-        VStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.title2)
-                .foregroundStyle(.secondary)
-            Text(title).font(.headline)
-            content
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .padding()
-        .frame(maxWidth: .infinity)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14))
+extension View {
+    /// 隐藏系统导航栏后恢复右滑返回。
+    /// 原实现复制在 TrendDetail / RecordDetail / LifetimePrediction / BatteryReport
+    /// 四个页面（含 UsageDetailSheet）里，统一抽成组件；
+    /// 用 simultaneousGesture 避免与顶栏按钮的点击手势竞争。
+    func swipeToDismiss(_ dismiss: DismissAction) -> some View {
+        self.simultaneousGesture(
+            DragGesture(minimumDistance: 25)
+                .onEnded { value in
+                    if value.translation.width > 60,
+                       abs(value.translation.width) > abs(value.translation.height) {
+                        dismiss()
+                    }
+                }
+        )
     }
 }
