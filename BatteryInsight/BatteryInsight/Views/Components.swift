@@ -48,3 +48,38 @@ extension View {
         )
     }
 }
+
+// MARK: - 统一卡片容器（H-2：消除各页卡片样式的重复实现）
+
+/// 统一的圆角卡片容器：内边距 + 材质/渐变底 + 可选描边，圆角 16 continuous。
+///
+/// 用途：LifetimePredictionView 等以「常规材质底」为主的卡片统一走它；
+/// 需要渐变卡底的页面（趋势分析页淡绿渐变，用户确认过的视觉）也通过
+/// `fillStyle` 传入 LinearGradient，保持全局一致的圆角与内边距。
+/// 有专属形态的卡片（主页记录卡 ultraThinMaterial 14pt + 描边、详情页指标格
+/// 按色彩底）保留各自样式，不强行套用。
+struct CardContainer<Content: View>: View {
+    /// 圆角（默认 16，与全项目卡片一致）
+    var cornerRadius: CGFloat = 16
+    /// 底色：材质 / 渐变 / 纯色均可
+    var fillStyle: AnyShapeStyle = AnyShapeStyle(.regularMaterial)
+    /// 可选细描边（传 .separator.opacity(...) 之类）
+    var stroke: Color?
+    /// 内容四周内边距
+    var padding: CGFloat = 16
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        content()
+            .padding(padding)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(fillStyle,
+                        in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay {
+                if let stroke {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .strokeBorder(stroke, lineWidth: 1)
+                }
+            }
+    }
+}
