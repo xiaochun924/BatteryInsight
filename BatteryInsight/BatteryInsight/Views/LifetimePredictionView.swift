@@ -3,8 +3,8 @@ import Charts
 
 /// 寿命预测页（主页趋势卡「详情」进入）。
 /// 参考竞品截图布局：
-/// - 顶部环状预测图：一圈弧线 + 中心大数字「2年9个月」+ 副标题「预计还需充电 500 次」
-/// - 三条说明卡：每块一条（当前健康度 / 预计寿命 / 充电周期）
+/// - 顶部环状预测图：一圈弧线 + 中心大数字「2年9个月」+ 副标题说明
+/// - 三条说明卡：每块一条（当前健康度 / 预计寿命 / 衰减速率）
 /// - 底部「生成周期报告」按钮（右侧小箭头 + 前往报告页）
 /// 数据口径统一走 BatteryAnalytics（与主页/趋势页同源，不再各自实现一套）。
 struct LifetimePredictionView: View {
@@ -14,19 +14,11 @@ struct LifetimePredictionView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showingReport = false
 
-    // MARK: - 数据（只算一次，见 P0-3）
-
-    /// P0-3：原实现 forecast 是计算属性，body 及子视图每次访问都会
-    /// 重新执行整条计算链（排序、算率、算月数）。这里在 body 顶部取一次，
-    /// 子视图全部改为传参函数，避免重复计算。
-    private let forecast = LifetimePredictionView.makeForecast()
-
-    /// 静态工厂：不持有视图状态也能在 body 外部计算一次
-    private static func makeForecast() -> BatteryAnalytics.LifetimeForecast? {
-        BatteryAnalytics.lifetimeForecast(records: DataStore.shared.healthRecords)
-    }
-
     var body: some View {
+        // P0-3：预测数据只在 body 顶部算一次（body 是 @MainActor，
+        // makeForecast 也是 @MainActor，可安全访问 DataStore 单例），
+        // 子视图改为传参，避免每条卡各自重复排序/算率。
+        let forecast = LifetimePredictionView.makeForecast()
         ScrollView {
             VStack(spacing: 16) {
                 ringCard(forecast)
@@ -48,13 +40,52 @@ struct LifetimePredictionView: View {
         .swipeToDismiss(dismiss)
     }
 
+    // MARK: - 预测数据
+
+    /// 预测结果（视图内私有模型，数据全部来自 BatteryAnalytics 真实 API）
+    private struct ForecastData {
+        let currentHealth: Double
+        /// 按当前衰减速率降到 80% 的月数
+        let monthsTo80: Double
+        /// 每月衰减速率（%/月）
+        let ratePerMonth: Double?
+
+        var remainingYears: Double { monthsTo80 / 12 }
+
+        /// 「X年X个月」文案
+        var durationText: String {
+            let months = Int(monthsTo80.rounded())
+            let years = months / 12
+            let rest = months % 12
+            if years > 0 && rest > 0 { return "约 \(years) 年 \(rest) 个月" }
+            if years > 0 { return "约 \(years) 年" }
+            return "约 \(months) 个月"
+        }
+
+        var rateText: String {
+            ratePerMonth.map { String(format: "%.2f%%/月", $0) } ?? "--"
+        }
+    }
+
+    /// 静态工厂：body 顶部调用一次。
+    /// 数据不足（无健康记录 / 健康度已 ≤80% / 衰减速率为 0）返回 nil → UI 显示「数据不足」。
+    @MainActor
+    private static func makeForecast() -> ForecastData? {
+        let records = DataStore.shared.healthRecords
+        guard let latest = BatteryAnalytics.latestHealth(records),
+              let months = BatteryAnalytics.monthsUntil80(records: records),
+              months > 0 else { return nil }
+        return ForecastData(currentHealth: latest.maximumCapacity,
+                            monthsTo80: months,
+                            ratePerMonth: BatteryAnalytics.healthDeclinePerMonth(records))
+    }
+
     // MARK: - 环状预测图
 
-    private func ringCard(_ forecast: BatteryAnalytics.LifetimeForecast?) -> some View {
-        // 圆环角度：进度环只有 2/3 圈（240°），留出缺口更像"目标进度"而非满环表盘
-        let ringLength: Double = 240
-        // 剩余寿命占出厂寿命的比例 → 弧长；nil 时兜底 0（数据不足显示 0%）
-        let progress = forecast.map { clamp01($0.remainingYears / $0.factoryYears) } ?? 0
+    private func ringCard(_ forecast: ForecastData?) -> some View {
+        // 进度环只有 2/3 圈（240°），留出缺口更像"目标进度"而非满环表盘。
+        // 剩余寿命比例 ≈ 当前健康度比例（健康 100% → 满环；健康 80% → 0）
+        let progress = forecast.map { clamp01($0.currentHealth / 100) } ?? 0
         return VStack(spacing: 12) {
             ZStack {
                 // 底环（浅色）
@@ -82,7 +113,7 @@ struct LifetimePredictionView: View {
                     if let forecast {
                         Text(forecast.durationText)
                             .font(.title.bold())
-                        Text("预计还需充电 \(forecast.remainingCycles) 次")
+                        Text("按当前衰减速率到 80%")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     } else {
@@ -98,8 +129,8 @@ struct LifetimePredictionView: View {
 
             HStack(spacing: 24) {
                 legendItem("健康度", String(format: "%.1f%%", forecast?.currentHealth ?? 0))
-                legendItem("出厂寿命", forecast?.durationText ?? "--")
                 legendItem("预计寿命", forecast?.durationText ?? "--")
+                legendItem("衰减速率", forecast?.rateText ?? "--")
             }
             .padding(.top, 4)
         }
@@ -120,15 +151,15 @@ struct LifetimePredictionView: View {
 
     // MARK: - 三条说明卡
 
-    private func infoCards(_ forecast: BatteryAnalytics.LifetimeForecast?) -> some View {
+    private func infoCards(_ forecast: ForecastData?) -> some View {
         // 用数组 + ForEach 渲染三条（比手写三个 VStack 更易维护）
         let items: [(icon: String, tint: Color, title: String, text: String)] = [
             ("battery.100", .green, "当前健康度",
              forecast.map { String(format: "%.1f%%", $0.currentHealth) } ?? "--"),
             ("hourglass", .orange, "预计寿命",
-             forecast.map { "\($0.durationText)（还需充电 \($0.remainingCycles) 次）" } ?? "--"),
-            ("arrow.2.circlepath", .blue, "充电周期",
-             "预计 \(forecast.map { "\($0.remainingCycles)" } ?? "--") 次"),
+             forecast.map { "\($0.durationText)（按当前衰减速率降到 80%）" } ?? "--"),
+            ("chart.line.downtrend.xyaxis", .blue, "衰减速率",
+             forecast?.rateText ?? "--"),
         ]
         return VStack(spacing: 12) {
             ForEach(items, id: \.title) { item in
