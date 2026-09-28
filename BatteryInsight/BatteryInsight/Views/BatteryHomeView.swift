@@ -1,274 +1,675 @@
 import SwiftUI
+import UIKit
 import Charts
 
-/// 「电池健康」主页：设备信息 / 健康趋势 / 检测记录 / 充电检测卡。
+/// 「电池健康」主页面，布局参考 iOS 电池健康类 App 的通用样式：
+///
+/// 1. **设备信息卡**：一行一条（机型/系统、健康度、循环、温度、容量、最近检测）
+/// 2. **趋势图表卡**：「健康 / 容量」切换 + 衰减速率 + 折线图（隐藏日期/数值刻度，
+///    只显示最近 7 次记录，绿色折线加粗 + 折线下淡绿渐变面积，逐点胶囊数值标签）
+///    + Y 轴随数据自适应 + 底部摘要行（预计多久降到 80% + 详情入口）
+/// 3. **检测记录**：每天一张独立圆角卡片底色（健康 %、循环次数、评级徽章、日期）
+///
+/// 原「电量趋势 / 趋势统计」（电量 % 曲线及其统计）已按需求删除——
+/// 电量起伏与健康度无关，真正有价值的是容量随时间的衰减。
+/// 原「充电检测」实时区块已拆分到「充电功率」Tab（ChargingPowerView），
+/// 本页只保留与健康度强相关的静态数据。
+/// 页面转场动画：记录详情/趋势分析从卡片 zoom 放大打开、反向缩回关闭；
+/// 寿命预测从「详情」胶囊 zoom 打开；周期报告走系统默认推入。
 struct BatteryHomeView: View {
     @EnvironmentObject private var vm: BatteryViewModel
-    @State private var selectedRange: RangeKind = .week
-    @State private var showingReport = false
 
-    enum RangeKind: String, CaseIterable, Identifiable {
-        case week = "近7天"
-        case month = "近30天"
+    @State private var showingReport = false
+    /// 寿命预测弹窗（趋势卡「详情」按钮打开）
+    @State private var showingLifetime = false
+    /// 「导入」一步到位：直接弹系统文件管理器，不再经过中间页
+    @State private var showingFileImporter = false
+    @State private var showingResult = false
+    /// 右上角设置弹窗（配置快捷指令）
+    @State private var showingSettings = false
+    /// 趋势分析页 push（与 home-inventory 一致的 navigationDestination 方式）
+    @State private var showingTrend = false
+    /// 选中的检测记录 → 详情页 push
+    @State private var selectedRecord: HealthRecord?
+    /// 页面转场命名空间：记录详情/趋势分析/寿命预测 zoom 打开/关闭动画
+    @Namespace private var namespace
+    /// 快捷指令名称（在设置里配置；留空时「分析」回退系统文件选择器）
+    @AppStorage("battery.shortcutName") private var shortcutName = ""
+    /// 图表显示哪种指标。容量数据只有导入分析日志后才有，届时才出现「容量」段
+    @State private var metric: ChartMetric = .health
+
+    enum ChartMetric: String, CaseIterable, Identifiable {
+        case health = "健康"
+        case capacity = "容量"
         var id: String { rawValue }
     }
 
-    var body: some View {
-        ScrollView {
-            VStack(spacing: 14) {
-                deviceCard
-                if vm.hasData {
-                    trendCard
-                }
-                if vm.sessions.contains(where: { $0.isActive }) || vm.activeChargingSession != nil {
-                    chargingCard
-                }
-                recordsSection
+    // MARK: - 数据
+
+    private var sortedHealth: [HealthRecord] {
+        vm.healthRecords.sorted { $0.date < $1.date }
+    }
+
+    /// 列表按时间倒序展示。显式转成数组：`reversed()` 的下标不是 Int，
+    /// 不能直接用于 onDelete 的 IndexSet 取值
+    private var reversedHealth: [HealthRecord] {
+        Array(sortedHealth.reversed())
+    }
+
+    private var latest: HealthRecord? { sortedHealth.last }
+
+    private var sortedAnalytics: [AnalyticsRecord] {
+        vm.analyticsRecords.sorted { $0.date < $1.date }
+    }
+
+    private var latestAnalytics: AnalyticsRecord? { sortedAnalytics.last }
+
+    /// 是否有实际容量数据（决定图表卡要不要显示「容量」切换段）
+    private var hasCapacityData: Bool {
+        sortedAnalytics.contains { $0.nominalChargeCapacity != nil }
+    }
+
+    /// 图表数据点。同一天可能有多条记录（手动连加、重复导入），
+    /// 按天去重（保留当天最后一条），避免 ForEach 出现重复 ID。
+    /// 图表只显示最近 7 次记录（干净折线，不堆历史远点）
+    private var chartPoints: [(date: Date, value: Double)] {
+        let raw: [(Date, Double)]
+        switch metric {
+        case .health:
+            raw = sortedHealth.map { ($0.date, $0.maximumCapacity) }
+        case .capacity:
+            raw = sortedAnalytics.compactMap { record in
+                record.nominalChargeCapacity.map { (record.date, Double($0)) }
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-            .padding(.bottom, 24)
         }
-        // 液态玻璃悬浮顶栏（参考 home-inventory 官方 Liquid Glass 实现）
+        var byDay: [Date: (date: Date, value: Double)] = [:]
+        for point in raw {
+            let day = Calendar.current.startOfDay(for: point.0)
+            byDay[day] = (point.0, point.1)
+        }
+        return Array(byDay.values.sorted { $0.date < $1.date }.suffix(7))
+    }
+
+    var body: some View {
+        Group {
+            if sortedHealth.isEmpty && sortedAnalytics.isEmpty {
+                emptyState
+            } else {
+                List {
+                    deviceCard
+                    trendCard
+                    recordsSection
+                }
+            }
+        }
+        // 液态玻璃悬浮顶栏（参考 home-inventory 官方 Liquid Glass 实现）：
+        // GlassEffectContainer 共享采样 + 中间悬浮玻璃胶囊标题 + 两侧玻璃按钮，
+        // 完全隐藏系统导航栏，不加白色蒙皮 / 磨砂遮挡
         .toolbar(.hidden, for: .navigationBar)
         .safeAreaInset(edge: .top, spacing: 0) {
             GlassTopBar(
                 title: "电池健康",
+                leading: {
+                    Menu {
+                        // 按需求只保留「周期报告」；手动添加记录 / 日志分析 / 优化建议
+                        // 三个功能已整体删除
+                        Button { showingReport = true } label: {
+                            Label("周期报告", systemImage: "calendar")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundColor(.primary)
+                            .frame(width: 40, height: 40)
+                            .glassEffect(.regular.interactive(), in: .circle)
+                            .contentShape(Rectangle())
+                            // VoiceOver：纯图标菜单按钮必须可读
+                            .accessibilityLabel("更多")
+                    }
+                    .buttonStyle(.plain)
+                },
                 trailing: {
-                    GlassCircleButton(icon: "chart.bar.doc.horizontal") { showingReport = true }
+                    HStack(spacing: 12) {
+                        // 「分析」：已配置快捷指令 → 运行快捷指令（用户在其内选择文件并传入本 App），
+                        // 未配置 → 直接弹系统文件选择器兜底
+                        Button { openImport() } label: {
+                            Text("分析")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(.primary)
+                                .padding(.horizontal, 14)
+                                .frame(height: 40)
+                                .glassEffect(.regular.interactive(), in: .capsule)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(vm.isImporting)
+                        // 右上角设置入口：配置快捷指令名称
+                        GlassCircleButton(icon: "gearshape") { showingSettings = true }
+                    }
                 }
             )
         }
-        // 周期报告（二级页，隐藏导航栏 + 右滑返回由组件统一处理）
+        // 周期报告：顶栏菜单入口无源卡片，走系统默认推入动画
         .navigationDestination(isPresented: $showingReport) {
             BatteryReportView()
         }
+        // 寿命预测：从「详情」胶囊 zoom 放大打开 / 缩回关闭
+        .navigationDestination(isPresented: $showingLifetime) {
+            LifetimePredictionView()
+                .navigationTransition(.zoom(sourceID: "lifetime-summary", in: namespace))
+        }
+        .sheet(isPresented: $showingSettings) { SettingsView() }
+        // 直接从最顶层 VC 弹系统选择器，不再包一层 sheet——
+        // 中间层白卡就是"点导入先跳白屏"的来源
+        .documentPicker(
+            isPresented: $showingFileImporter,
+            contentTypes: AnalyticsFileImporter.allowedContentTypes,
+            allowsMultipleSelection: true
+        ) { urls in
+            Task {
+                _ = await vm.importAnalyticsFiles(urls)
+                showingResult = true
+            }
+        }
+        .alert("导入结果", isPresented: $showingResult) {
+            Button("好", role: .cancel) { }
+        } message: {
+            Text(vm.importMessage ?? "")
+        }
+        .overlay {
+            if vm.isImporting { ImportingOverlay(stage: vm.importStage) }
+        }
     }
 
-    // MARK: - 设备信息卡
+    // MARK: - 设备信息卡（参考截图第一张卡片：一行一条）
 
     private var deviceCard: some View {
-        Panel("设备", systemImage: "iphone",
-              trailing: Text(verbatim: DeviceBatterySpec.current?.modelName ?? "--")) {
-            if vm.hasRealLevel {
-                VStack(alignment: .leading, spacing: 14) {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(vm.levelPercent.map { String(format: "%.1f", $0) } ?? "--")
-                            .mwReadout(size: 44)
-                            .foregroundStyle(.primary)
-                        Text("%")
-                            .font(.system(size: 18, weight: .medium, design: .rounded))
-                            .foregroundStyle(Color.mwMuted)
-                    }
-                    // 电池状态胶囊 + 当日耗电速率（拉取频率高、耗电，仅在有数据时展示）
-                    HStack(spacing: 6) {
-                        Pill(text: Text(vm.stateText), systemImage: vm.isCharging ? "bolt.fill" : "battery.50", tint: .mwAccent)
-                        if let rate = vm.drainRate {
-                            Pill(text: Text(verbatim: String(format: "%.1f %%h", rate)), systemImage: "speedometer", tint: .mwMuted)
-                        }
-                        if let hours = vm.remainingHours {
-                            Pill(text: Text(verbatim: String(format: "%.1f h", hours)), systemImage: "clock", tint: .mwMuted)
-                        }
-                    }
-                    .font(.caption)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            } else {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("暂无实时电量")
-                        .font(.headline)
-                    Text("模拟器或未授权权限时无法读取。真机首次使用请允许「电池使用信息」权限。")
-                        .font(.caption)
-                        .foregroundStyle(Color.mwMuted)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+        Section {
+            infoRow(
+                icon: "iphone.gen3", tint: .green,
+                title: UIDevice.current.name,
+                accessory: {
+                    // 系统版本徽章（对应截图的「iOS xx.x >」）
+                    Text("iOS \(UIDevice.current.systemVersion)")
+                        .font(.caption.bold())
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(.quaternary, in: Capsule())
+                }())
+
+            if let record = latest {
+                infoRow(
+                    icon: "battery.100", tint: healthTint(record.maximumCapacity),
+                    title: "电池健康度",
+                    accessory: valueText(String(format: "%.2f", record.maximumCapacity) + " %",
+                                         color: healthTint(record.maximumCapacity)))
             }
+            if let cycles = latest?.cycleCount ?? latestAnalytics?.cycleCount {
+                infoRow(
+                    icon: "arrow.2.circlepath", tint: .blue,
+                    title: "循环次数",
+                    accessory: valueText("\(cycles) 次", color: .primary))
+            }
+            if let temp = latestAnalytics?.temperature {
+                infoRow(
+                    icon: "thermometer.medium", tint: .orange,
+                    title: "估算温度",
+                    accessory: valueText(String(format: "约 %.0f ℃", temp), color: .primary))
+            }
+            if let text = capacityText {
+                infoRow(
+                    icon: "bolt.batteryblock", tint: .teal,
+                    title: "电池容量",
+                    accessory: valueText(text, color: .primary))
+            }
+            if let date = latest?.date {
+                infoRow(
+                    icon: "calendar", tint: .gray,
+                    title: "最近检测",
+                    accessory: valueText(date.chineseDateText, color: .secondary))
+            }
+        } header: {
+            Text("设备信息")
         }
     }
 
-    // MARK: - 健康趋势卡
-
-    private var filteredSamples: [BatterySample] {
-        let days = selectedRange == .week ? 7 : 30
-        return vm.samples.filter { Calendar.current.isDateInToday($0.date) || $0.date >= Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date() }
+    private func infoRow(icon: String, tint: Color, title: String, accessory: some View) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.body)
+                .foregroundStyle(tint)
+                .frame(width: 26)
+            Text(title)
+                .font(.body)
+                .lineLimit(1)
+            Spacer()
+            accessory
+        }
+        .padding(.vertical, 2)
     }
+
+    private func valueText(_ text: String, color: Color) -> some View {
+        Text(text)
+            .font(.subheadline.bold())
+            .foregroundStyle(color)
+            .lineLimit(1)
+    }
+
+    /// 电池容量文案：额定容量 + 实时容量拼接（移出 ViewBuilder，避免 Void 表达式无法转成 View）
+    private var capacityText: String? {
+        guard let nominal = latestAnalytics?.nominalChargeCapacity else { return nil }
+        var text = "\(nominal) mAh"
+        if let raw = latestAnalytics?.rawMaxCapacity {
+            text += " / 实时 \(raw) mAh"
+        }
+        return text
+    }
+
+    // MARK: - 趋势图表卡（参考截图第二张卡片）
 
     private var trendCard: some View {
-        Panel("健康趋势", systemImage: "chart.line.uptrend.xyaxis") {
-            VStack(spacing: 8) {
-                Picker("范围", selection: $selectedRange) {
-                    ForEach(RangeKind.allCases) { Text($0.rawValue).tag($0) }
-                }
-                .pickerStyle(.segmented)
-
-                if filteredSamples.isEmpty {
-                    Text("该范围内暂无数据")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .padding(.vertical, 20)
-                } else {
-                    Chart(filteredSamples) { s in
-                        LineMark(x: .value("时间", s.date),
-                                 y: .value("电量 %", s.level * 100))
-                            .foregroundStyle(Color.mwAccent)
-                            .lineStyle(StrokeStyle(lineWidth: 2))
-                            .interpolationMethod(.monotone)
-                    }
-                    .chartYScale(domain: 0...100)
-                    .frame(height: 140)
-                }
-            }
-        }
-    }
-
-    // MARK: - 充电检测卡
-
-    private var chargingCard: some View {
-        Panel("充电检测", systemImage: "bolt.fill") {
-            if let session = vm.activeChargingSession {
+        Section {
+            // 头部：「健康 / 容量」切换 + 衰减速率 + 详细分析入口
+            VStack(spacing: 12) {
                 HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("充电中")
+                    if hasCapacityData {
+                        Picker("指标", selection: $metric) {
+                            ForEach(ChartMetric.allCases) { Text($0.rawValue).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 150)
+                    } else {
+                        Text(metric == .health ? "健康度趋势" : "容量趋势")
                             .font(.headline)
-                            .foregroundStyle(.green)
-                        Text(session.startDate.formatted(.dateTime.month().day().hour().minute()))
-                            .font(.caption)
+                    }
+
+                    // 对应截图布局：衰减速率紧跟分段（「↘ -0.10%」红色向下箭头）
+                    if metric == .health, let rate = BatteryAnalytics.healthDeclinePerMonth(vm.healthRecords) {
+                        Label(String(format: "%.2f", rate), systemImage: "arrow.down.right")
+                            .font(.subheadline.bold())
+                            .foregroundStyle(.red)
+                            .padding(.leading, 10)
+                    }
+
+                    Spacer()
+                }
+
+                // 点击趋势图 → 进入独立「趋势分析」页（参考竞品截图布局），zoom 转场
+                Button {
+                    showingTrend = true
+                } label: {
+                    trendChart
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                // zoom 转场源：趋势图放大进入分析页，返回时缩回
+                .matchedTransitionSource(id: "trend-chart", in: namespace) { source in
+                    source.clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+                .navigationDestination(isPresented: $showingTrend) {
+                    TrendDetailView()
+                        .navigationTransition(.zoom(sourceID: "trend-chart", in: namespace))
+                }
+
+                // 底部摘要行（对应截图：「⚖️ 正常老化 · 约 2 年 9 个月到 80%」+ 右侧「详情」入口）
+                HStack(spacing: 6) {
+                    if let summary = summaryText {
+                        Image(systemName: "scalemass")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        Text(summary)
+                            .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Text("\(Int(session.peakLevel * 100))%")
-                        .font(.system(size: 28, weight: .bold, design: .rounded))
-                        .foregroundStyle(.green)
+                    // 「详情」始终可点：弹出寿命预测界面（截图样式），zoom 转场
+                    Button { showingLifetime = true } label: {
+                        Text("详情")
+                            .font(.footnote.bold())
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(.quaternary, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    // zoom 转场源：「详情」胶囊放大进入寿命预测页，返回时缩回
+                    .matchedTransitionSource(id: "lifetime-summary", in: namespace) { source in
+                        source.clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
                 }
-            } else {
-                Text("检测到充电状态变化")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                .padding(.top, 2)
             }
+            .padding(.vertical, 4)
+        } header: {
+            Text("趋势")
         }
     }
 
-    // MARK: - 检测记录
+    private var trendChart: some View {
+        let points = chartPoints
+        return Chart {
+            ForEach(points, id: \.date) { point in
+                // 折线下方的淡绿渐变面积（视觉层次，告别单调折线；与折线同色系，
+                // 顶部靠线处较深、向下渐隐，突出折线走势）
+                AreaMark(
+                    x: .value("日期", point.date),
+                    y: .value(metric == .health ? "健康度" : "容量", point.value)
+                )
+                .interpolationMethod(.monotone)
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [Color.green.opacity(0.25), Color.green.opacity(0.02)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+
+                LineMark(
+                    x: .value("日期", point.date),
+                    y: .value(metric == .health ? "健康度" : "容量", point.value)
+                )
+                .foregroundStyle(Color.green)
+                .interpolationMethod(.monotone)
+                // 绿色折线加粗（圆头圆角连接，观感干净）
+                .lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+
+                PointMark(
+                    x: .value("日期", point.date),
+                    y: .value(metric == .health ? "健康度" : "容量", point.value)
+                )
+                .foregroundStyle(Color.green)
+                // 每个数据点上方标数值胶囊；已限最近 7 次记录，点数 ≤ 7 全部标注，不会糊
+                .annotation(position: .top, spacing: 6) {
+                    Text(label(for: point.value))
+                        .font(.caption2.bold())
+                        .foregroundStyle(.green)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(.thinMaterial, in: Capsule())
+                }
+            }
+        }
+        // Y 轴随数据自适应（截图布局）：健康度 100% 上下也能完整显示
+        .chartYScale(domain: yDomain(for: points))
+        // 隐藏日期/数值刻度，只留干净折线 + 数值胶囊
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+        .frame(height: 180)
+        // 无障碍（A11Y-2）：图表是纯图像，对 VoiceOver 提供文字摘要，
+        // 读屏用户也能知道趋势方向与幅度
+        .accessibilityLabel(metric == .health ? "最近7次健康度趋势" : "最近7次容量趋势")
+        .accessibilityValue(chartAccessibilitySummary(points))
+    }
+
+    private func label(for value: Double) -> String {
+        metric == .health ? String(format: "%.1f", value) : "\(Int(value))"
+    }
+
+    /// 图表的 VoiceOver 摘要：首尾值 + 变化方向与幅度
+    private func chartAccessibilitySummary(_ points: [(date: Date, value: Double)]) -> String {
+        guard let first = points.first, let last = points.last else { return "暂无数据" }
+        let unit = metric == .health ? "%" : "mAh"
+        let delta = last.value - first.value
+        let arrow = delta >= 0 ? "上升" : "下降"
+        return String(format: "从%.1f%@到%.1f%@，%@%.1f%@",
+                      first.value, unit, last.value, unit,
+                      arrow, abs(delta), unit)
+    }
+
+    /// Y 轴范围：健康度与容量都按数据自适应，并留出上下余量。
+    ///
+    /// 健康度常见 100% 上下（出厂容量是标称值，实际电芯存在正公差），
+    /// 不再固定 70~100——否则 101.x 的数据点会被挤出图表看不见。
+    /// 对齐截图布局：数据 101.60~101.78 时，Y 轴显示 100~103。
+    /// 注意局部变量不能叫 min/max——会遮蔽同名系统函数导致编译错误
+    private func yDomain(for points: [(date: Date, value: Double)]) -> ClosedRange<Double> {
+        guard let lo0 = points.map(\.value).min(),
+              let hi0 = points.map(\.value).max() else { return 95...105 }
+        let lo = floor(lo0 - 1)
+        let hi = ceil(hi0 + 1)
+        // 单点或数值相同：至少撑开 2 个单位，避免折线贴成一条线
+        if hi - lo < 2 {
+            return floor(lo0 - 2)...ceil(hi0 + 2)
+        }
+        return lo...hi
+    }
+
+    /// 底部摘要：按当前衰减速率估算降到 80% 的时间。
+    /// P0-4：原实现里 monthsUntil80 会再内部调用一次 healthDeclinePerMonth（重复排序），
+    /// 这里直接取一次 rate 并自算月数，衰减速率全程只算一遍
+    private var summaryText: String? {
+        guard metric == .health, let latest = latest else { return nil }
+        let rate = BatteryAnalytics.healthDeclinePerMonth(vm.healthRecords)
+        let state = (rate ?? 0) <= 1.0 ? "正常老化" : "老化偏快"
+        guard let rate, rate > 0, latest.maximumCapacity > 80 else { return nil }
+        let months = (latest.maximumCapacity - 80) / rate
+        if months >= 12 {
+            let years = Int(months) / 12
+            let rest = Int(months) % 12
+            let duration = rest > 0 ? "约 \(years) 年 \(rest) 个月" : "约 \(years) 年"
+            return "\(state) · \(duration)到 80%"
+        }
+        return "\(state) · 约 \(Int(months)) 个月到 80%（当前 \(String(format: "%.1f", latest.maximumCapacity))%）"
+    }
+
+    // MARK: - 检测记录（参考截图底部的每日卡片）
 
     private var recordsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("检测记录")
-                    .font(.headline)
-                Spacer()
-                if !vm.healthRecords.isEmpty {
-                    Text("\(vm.healthRecords.count) 条")
+        Section("检测记录（\(sortedHealth.count) 条）") {
+            ForEach(reversedHealth) { record in
+                // 点任意一条记录 → push 详情页（电池数据 / 其他数据 分段），zoom 转场
+                Button {
+                    selectedRecord = record
+                } label: {
+                    recordCard(record)
+                }
+                .buttonStyle(.plain)
+                // 每条记录已有独立卡片底色，隐藏行间分隔线
+                .listRowSeparator(.hidden)
+                // zoom 转场源：记录卡放大进入详情，返回时缩回。
+                // 注意：contentShape 必须声明在 label 内容层（recordCard 内），
+                // 不能加在 Button 上——matchedTransitionSource 会把 Button 的
+                // 命中区域收缩到内容边界，加在 Button 上空白处依然点不中
+                .matchedTransitionSource(id: record.id, in: namespace) { source in
+                    source.clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+            }
+            .onDelete { offsets in
+                offsets.map { reversedHealth[$0] }
+                    .forEach { vm.deleteHealth($0) }
+            }
+        }
+        .navigationDestination(item: $selectedRecord) { record in
+            RecordDetailView(record: record, analytics: analyticsFor(record))
+                .navigationTransition(.zoom(sourceID: record.id, in: namespace))
+        }
+    }
+
+    /// 取该条手动记录同一天的分析日志（详情页的数据源之一）
+    private func analyticsFor(_ record: HealthRecord) -> AnalyticsRecord? {
+        let day = Calendar.current.startOfDay(for: record.date)
+        return sortedAnalytics.first { Calendar.current.startOfDay(for: $0.date) == day }
+    }
+
+    private func recordCard(_ record: HealthRecord) -> some View {
+        // 同一天的分析日志（温度 / 循环 / 累计运行时长的数据源）
+        let analytics = analyticsFor(record)
+        // 循环次数：手动记录优先，同天分析日志兜底。
+        // 注意 analytics?.cycleCount 是 Int??（嵌套可选项），逐层 if-let 解包最稳；
+        // 且赋值语句必须放在 ViewBuilder 闭包之外（闭包内 if 分支只能是 View）
+        let cycles: Int
+        if let c = record.cycleCount {
+            cycles = c
+        } else if let c = analytics?.cycleCount {
+            cycles = c
+        } else {
+            cycles = 0
+        }
+        // 评级与健康色只算一次（body 渲染时避免重复 switch）
+        let recordRating = rating(record.maximumCapacity)
+        let recordTint = healthTint(record.maximumCapacity)
+        return HStack(alignment: .center, spacing: 8) {
+            // 列1：健康度 + 估算温度（截图对应「健康 101.60% / 15个应用卡顿」；
+            // 卡顿无数据源，用估算温度占位）
+            VStack(alignment: .leading, spacing: 6) {
+                Text("健康 " + String(format: "%.2f", record.maximumCapacity) + "%")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(recordTint)
+                if let temp = analytics?.temperature {
+                    Text("约 \(String(format: "%.0f", temp))℃")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("温度 --")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            if vm.healthRecords.isEmpty {
-                Text("还没有检测记录。点击右上角导入按钮选择电池分析日志。")
-                    .font(.footnote)
+            // 列2：循环次数 + 评级徽章（截图对应「充电 91次 / 一般」）
+            VStack(alignment: .leading, spacing: 6) {
+                Text("循环 \(cycles) 次")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(.primary)
+                Text(recordRating.text)
+                    .font(.caption2.bold())
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2)
+                    .background(recordRating.color.opacity(0.15), in: Capsule())
+                    .foregroundStyle(recordRating.color)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            // 列3：日期徽章 + 当天亮屏时长（文件抓取的续航，X时Y分）
+            VStack(alignment: .trailing, spacing: 6) {
+                Text(record.date.chineseDateText)
+                    .font(.caption.bold())
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(.quaternary, in: Capsule())
                     .foregroundStyle(.secondary)
-            } else {
-                LazyVStack(spacing: 8) {
-                    ForEach(vm.healthRecords.sorted { $0.date > $1.date }) { record in
-                        recordCard(record)
-                    }
+                if let seconds = analytics?.screenOnSeconds {
+                    Text(durationText(seconds))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("--")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        // 内容四周留白，卡片底色包裹后文字与圆角边缘有呼吸感
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        // 每一条记录独立的磨砂玻璃卡片（重构：不再用单色平铺——纯色底色调深了显黑、
+        // 调浅了看不见，两头都不好看）。改用 ultraThinMaterial 微透明白底（深浅模式
+        // 自适应、通透不显黑）+ 系统分隔线细描边勾出卡片轮廓，与顶部液态玻璃风格统一
+        .background {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(.ultraThinMaterial)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(.separator.opacity(0.5), lineWidth: 1)
+        }
+        // 整卡（含空白区域）可点击：命中形状声明在内容层（与趋势图按钮同写法）。
+        // matchedTransitionSource 会按内容 bounds 收缩 Button 命中区，
+        // 在 label 内声明 Rectangle() 才能覆盖撑满整行的空白区域
+        .contentShape(Rectangle())
+    }
+
+    /// 当天亮屏时长文案：「X时Y分」—— 文件抓取到的当天亮屏累计时长
+    /// （intervalUsageActiveDurationsHistogramViews.first_value_ScreenOnDuration 求和，秒）
+    private func durationText(_ seconds: Double) -> String {
+        let total = Int(seconds.rounded())
+        return "\(total / 3600)时\(total % 3600 / 60)分"
+    }
+
+    private func rating(_ health: Double) -> (text: String, color: Color) {
+        switch health {
+        case 95...:  return ("优秀", .green)
+        case 85..<95: return ("良好", .teal)
+        case 80..<85: return ("一般", .orange)
+        default:     return ("较差", .red)
         }
     }
 
-    /// 单条记录卡：圆角胶囊卡底 + 描边（用户确认过的视觉：ultraThinMaterial + separator 描边）。
-    /// 整卡可点进详情页；点击区覆盖整张卡（contentShape 放在 label 内容层），
-    /// 避免只响应文字区域的旧问题。
-    private func recordCard(_ record: HealthRecord) -> some View {
-        let analytics = vm.analyticsRecords.first { Calendar.current.isDate($0.date, inSameDayAs: record.date) }
+    private func healthTint(_ health: Double) -> Color {
+        if health < 80 { return .red }
+        if health < 85 { return .orange }
+        return .green
+    }
 
-        return NavigationLink(value: record) {
-            HStack(spacing: 12) {
-                // 左侧日期块
-                VStack(spacing: 0) {
-                    Text(record.date.chineseDateText)
-                        .font(.system(size: 15, weight: .semibold))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+    // MARK: - 空态
+
+    private var emptyState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "heart.text.square")
+                .font(.largeTitle)
+                .foregroundStyle(.secondary)
+            Text("还没有电池数据").font(.headline)
+            Text("iOS 不开放「最大容量 / 循环次数」给第三方 App。\n"
+                 + "最准确的做法是从系统「分析数据」导入日志：\n"
+                 + "设置 → 隐私与安全性 → 分析与改进 → 分析数据")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            VStack(spacing: 10) {
+                Button { showingFileImporter = true } label: {
+                    Label("从分析日志导入", systemImage: "square.and.arrow.down")
+                        .frame(maxWidth: .infinity)
                 }
-                .frame(width: 64, alignment: .leading)
-
-                // 中部：健康度 + 次要信息
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 6) {
-                        Text(healthText(record))
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(.green)
-                        if let delta = healthDeltaText(record) {
-                            Text(delta)
-                                .font(.caption)
-                                .foregroundStyle(delta.hasPrefix("-") ? .red : .green)
-                        }
-                    }
-                    HStack(spacing: 8) {
-                        if let cycles = record.cycleCount {
-                            Text("\(cycles) 次循环")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        if let a = analytics, let cap = a.nominalChargeCapacity {
-                            Text("\(cap) mAh")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
-                Spacer()
-
-                // 右侧箭头
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
+                .buttonStyle(.borderedProminent)
+                .disabled(vm.isImporting)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(.ultraThinMaterial)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(.separator.opacity(0.5), lineWidth: 1)
-            )
+            .padding(.horizontal, 32)
         }
-        .buttonStyle(.plain)
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    /// 记录卡展示的健康度：有分析日志用「计算健康度」，否则用系统健康度
-    private func healthText(_ record: HealthRecord) -> String {
-        let value = recordHealth(record)
-        return value.map { String(format: "%.1f%%", $0) } ?? "--"
-    }
-
-    /// 计算健康度：额定容量 ÷ 出厂容量 × 100%（不再显示系统健康度）
-    private func recordHealth(_ record: HealthRecord) -> Double? {
-        if let analytics = vm.analyticsRecords.first(where: { Calendar.current.isDate($0.date, inSameDayAs: record.date) }),
-           let nominal = analytics.nominalChargeCapacity,
-           let design = analytics.designCapacity ?? DeviceBatterySpec.current?.factoryCapacity,
-           design > 0 {
-            return Double(nominal) / Double(design) * 100
+    /// 导入入口：已配置快捷指令 → 运行快捷指令（快捷指令内选择文件并打开本 App）；
+    /// 未配置或打开失败 → 直接弹系统文件选择器兜底
+    private func openImport() {
+        let name = shortcutName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else {
+            showingFileImporter = true
+            return
         }
-        return record.maximumCapacity
+        guard let encoded = name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "shortcuts://run-shortcut?name=\(encoded)") else {
+            showingFileImporter = true
+            return
+        }
+        UIApplication.shared.open(url)
     }
 
-    /// 与上一条记录的健康度差值（用于红色下降 / 绿色上升提示）
-    private func healthDeltaText(_ record: HealthRecord) -> String? {
-        let sorted = vm.healthRecords.sorted { $0.date > $1.date }
-        guard let idx = sorted.firstIndex(where: { $0.id == record.id }),
-              idx + 1 < sorted.count else { return nil }
-        let current = recordHealth(record)
-        let previous = recordHealth(sorted[idx + 1])
-        guard let current, let previous else { return nil }
-        let delta = current - previous
-        guard abs(delta) > 0.05 else { return nil }
-        return String(format: "%+.1f", delta)
+}
+
+// MARK: - 解析中遮罩
+
+/// 解析几十 MB 的日志要几秒。之前没有这个反馈，界面就是一片黑屏，
+/// 看起来跟"点了没反应 / 卡死"一样。
+private struct ImportingOverlay: View {
+    let stage: String?
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.2).ignoresSafeArea()
+            VStack(spacing: 12) {
+                ProgressView()
+                    .controlSize(.large)
+                Text(stage ?? "正在解析…")
+                    .font(.subheadline)
+                Text("日志较大时需要几秒，请稍候")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(24)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+        }
+        .allowsHitTesting(true)
     }
 }

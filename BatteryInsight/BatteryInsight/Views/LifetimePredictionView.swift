@@ -1,27 +1,214 @@
 import SwiftUI
-import Charts
 
-/// 寿命预测页：按近期健康度衰减外推剩余寿命，并用胶囊趋势图展示历史健康度。
-///
-/// 数据：手动记录（HealthRecord）+ 当日分析日志。衰减速率由历史记录拟合，
-/// 不编造不存在的点；记录太少时只展示现状，不硬给预测数字。
-/// 视觉：常规材质卡底（CardContainer），顶部汇总卡片为淡绿渐变。
+// MARK: - 寿命预测模型
+
+/// 寿命预测结果：基于已有记录线性外推的容量衰减预估。
+/// 口径统一写在 BatteryAnalytics.lifetimeForecast 注释里，算法估算，仅供参考。
+struct LifetimeForecast {
+    /// 每日循环次数（总循环 ÷ 已使用天数）
+    let dailyCycleCount: Double?
+    /// 总容量衰减速率 mAh/天（健康度月衰减 × 额定容量 ÷ 30）
+    let totalLossPerDay: Double?
+    /// 自然老化 mAh/天
+    let naturalLossPerDay: Double?
+    /// 循环磨损 mAh/天
+    let cycleLossPerDay: Double?
+    /// 老化状态：正常老化 / 老化偏快 / 暂无数据
+    let agingState: String
+    /// 双轨状态：双轨均衡 / 自然老化主导 / 循环磨损主导 / 暂无数据
+    let trackBalance: String
+    /// 状态提示文案
+    let hint: String
+    /// 跌到 80% 还需月数
+    let monthsUntil80: Double?
+    /// 跌到 90% 还需月数
+    let monthsUntil90: Double?
+    /// 未来预测：[(月数, 容量保留 %)]
+    let futureRetentions: [(months: Int, retention: Double)]?
+}
+
+extension BatteryAnalytics {
+
+    /// 生成寿命预测。
+    ///
+    /// 算法口径（线性外推，估算值，仅供参考）：
+    /// 1. 每日循环次数 = 最新循环次数 ÷ 已使用天数
+    ///    （已使用天数 = 首次使用日期 DOFU → 最新记录日；无 DOFU 用最早记录日）
+    /// 2. 总容量衰减速率 mAh/天 = 健康度月衰减(%) × 额定容量 ÷ 30
+    ///    （健康度口径比单条容量更稳：容量首尾差值受额定/实时公差影响大）
+    /// 3. 双轨分解：
+    ///    - 循环磨损每日 = 每次循环损耗（额定容量 × 0.02% 经验值）× 每日循环次数
+    ///    - 自然老化每日 = 总衰减速率 − 循环磨损每日（不低于 0）
+    /// 4. 未来预测保留% = (当前容量 − 月衰减 mAh × 月数) ÷ 额定容量 × 100，钳制 [0, 100]
+    /// 5. 跌到 80% / 90% 时间 = (最新健康度 − 目标) ÷ 月衰减(%)，按月线性外推
+    static func lifetimeForecast(health: [HealthRecord],
+                                 analytics: [AnalyticsRecord]) -> LifetimeForecast {
+        let sortedA = analytics.sorted { $0.date < $1.date }
+        let first = sortedA.first
+        let last = sortedA.last
+
+        // 注意：`a?.b ?? c?.d` 中 a?.b / c?.d 都是嵌套可选项（Int?? / Date??），
+        // `??` 泛型推断存在歧义风险；这里全部先解一层再合并，保证编译稳定。
+        var design: Int?
+        if let d = last?.designCapacity {
+            design = d
+        } else if let n = last?.nominalChargeCapacity {
+            design = n
+        }
+        var current: Int?
+        if let r = last?.rawMaxCapacity {
+            current = r
+        } else if let n = last?.nominalChargeCapacity {
+            current = n
+        }
+
+        // 已使用天数（首次使用日期 DOFU → 最新记录日；无 DOFU 用最早记录日）
+        var firstDay: Date?
+        if let d = first?.firstUseDate {
+            firstDay = d
+        } else if let d = first?.date {
+            firstDay = d
+        }
+        var lastDay: Date?
+        if let d = last?.date {
+            lastDay = d
+        } else if let d = health.sorted { $0.date < $1.date }.last?.date {
+            lastDay = d
+        }
+        var days: Double?
+        if let f = firstDay, let l = lastDay, l > f {
+            days = l.timeIntervalSince(f) / 86_400
+        }
+
+        // 每日循环次数
+        var cpd: Double?
+        if let cycles = last?.cycleCount, let d = days, d > 0 {
+            cpd = Double(cycles) / d
+        }
+
+        // 总容量衰减速率（健康度口径）
+        var total: Double?
+        if let rate = healthDeclinePerMonth(health), let cap = design,
+           rate > 0, cap > 0 {
+            total = rate / 100 * Double(cap) / 30
+        }
+
+        // 双轨分解
+        var natural: Double?
+        var cycle: Double?
+        if let t = total {
+            let perCycle = Double(design ?? 4900) * 0.0002
+            let cyclePerDay = (cpd ?? 0) * perCycle
+            if cyclePerDay >= t {
+                cycle = t
+                natural = 0
+            } else {
+                cycle = cyclePerDay
+                natural = t - cyclePerDay
+            }
+        }
+
+        // 未来预测
+        var future: [(months: Int, retention: Double)]?
+        if let cur = current, let cap = design, cap > 0, let t = total {
+            let monthly = t * 30
+            future = [1, 3, 6].map { m in
+                let retention = (Double(cur) - monthly * Double(m)) / Double(cap) * 100
+                return (m, min(max(retention, 0), 100))
+            }
+        }
+
+        // 老化状态
+        let rate = healthDeclinePerMonth(health)
+        let aging: String
+        if let r = rate {
+            aging = r <= 1.0 ? "正常老化" : "老化偏快"
+        } else {
+            aging = "暂无数据"
+        }
+
+        // 双轨状态
+        var balance = "暂无数据"
+        var hint = "继续记录数据观察趋势"
+        if let n = natural, let c = cycle, (n + c) > 0 {
+            let ratio = n / (n + c)
+            if ratio >= 0.6 {
+                balance = "自然老化主导"
+                hint = "自然老化占比较高，温度与存放方式是关键"
+            } else if ratio <= 0.4 {
+                balance = "循环磨损主导"
+                hint = "循环磨损占比较高，建议浅充浅放"
+            } else {
+                balance = "双轨均衡"
+                hint = "双轨接近，继续记录数据观察趋势"
+            }
+        }
+
+        // 跌到 80% / 90%
+        let m80 = monthsUntil80(records: health)
+        var m90: Double?
+        if let latest = latestHealth(health), let r = rate,
+           r > 0, latest.maximumCapacity > 90 {
+            m90 = (latest.maximumCapacity - 90) / r
+        }
+
+        return LifetimeForecast(
+            dailyCycleCount: cpd,
+            totalLossPerDay: total,
+            naturalLossPerDay: natural,
+            cycleLossPerDay: cycle,
+            agingState: aging,
+            trackBalance: balance,
+            hint: hint,
+            monthsUntil80: m80,
+            monthsUntil90: m90,
+            futureRetentions: future)
+    }
+
+    /// 月数 → 「约 X 年 Y 个月 / 约 X 个月 / 少于 1 个月」
+    static func durationText(_ months: Double) -> String {
+        guard months >= 1 else { return "少于 1 个月" }
+        if months >= 12 {
+            let years = Int(months) / 12
+            let rest = Int(months) % 12
+            return rest > 0 ? "约 \(years) 年 \(rest) 个月" : "约 \(years) 年"
+        }
+        return "约 \(Int(months)) 个月"
+    }
+}
+
+// MARK: - 寿命预测界面（截图样式）
+
+/// 寿命预测：主页趋势卡「详情」按钮弹出。
+/// 布局参考截图：状态徽章 → 80%/90% 里程碑 → 免责提示 → 未来预测 → 双轨损耗分析 → 依据说明。
 struct LifetimePredictionView: View {
     @EnvironmentObject private var vm: BatteryViewModel
     @Environment(\.dismiss) private var dismiss
 
+    /// 依据说明展开状态
+    @State private var showBasis = false
+
+    /// 预测结果只算一次（body 顶部）；计算属性无缓存会导致 body 内多次访问重复重算
+    private var forecast: LifetimeForecast {
+        BatteryAnalytics.lifetimeForecast(health: vm.healthRecords, analytics: vm.analyticsRecords)
+    }
+
     var body: some View {
+        // 一次求值只算一遍预测，子视图全部引用同一份（避免计算属性被多次访问重复重算）
+        let forecast = self.forecast
         ScrollView {
             VStack(spacing: 14) {
-                summaryCard
-                if records.count >= 2 {
-                    trendCard
-                }
+                statusCard(forecast)
+                milestoneRow(forecast)
+                disclaimer
+                futureCard(forecast)
+                wearCard(forecast)
+                basisCard
             }
             .padding(.horizontal, 16)
-            .padding(.top, 8)
-            .padding(.bottom, 24)
+            .padding(.vertical, 12)
         }
+        .background(Color(.systemGroupedBackground))
         // 液态玻璃悬浮顶栏（参考 home-inventory 官方 Liquid Glass 实现）；二级页左上返回
         .toolbar(.hidden, for: .navigationBar)
         .safeAreaInset(edge: .top, spacing: 0) {
@@ -32,184 +219,215 @@ struct LifetimePredictionView: View {
         .swipeToDismiss(dismiss)
     }
 
-    // MARK: - 数据
+    // MARK: 状态卡（正常老化 + 双轨均衡 + 提示 + 每日次数）
 
-    /// 参与预测的记录：近 30 天按天去重、升序，最多 30 条
-    private var records: [HealthRecord] {
-        let calendar = Calendar.current
-        let cutoff = calendar.date(byAdding: .day, value: -30, to: Date()) ?? Date()
-        var seen = Set<Date>()
-        return vm.healthRecords
-            .filter { $0.date >= cutoff }
-            .sorted { $0.date < $1.date }
-            .filter { seen.insert(calendar.startOfDay(for: $0.date)).inserted }
-    }
-
-    /// 记录对应的健康度（计算口径，见 recordHealth）
-    private var healthValues: [Double] {
-        records.compactMap { recordHealth($0) }
-    }
-
-    private var latestHealth: Double? {
-        healthValues.last
-    }
-
-    /// 线性拟合的年化衰减速率（百分点/年）
-    private var declinePerYear: Double? {
-        guard healthValues.count >= 2 else { return nil }
-        let xs = records.map { $0.date.timeIntervalSince1970 }
-        let ys = healthValues
-        let n = Double(xs.count)
-        let meanX = xs.reduce(0, +) / n
-        let meanY = ys.reduce(0, +) / n
-        let num = zip(xs, ys).reduce(0) { $0 + ($1.0 - meanX) * ($1.1 - meanY) }
-        let den = xs.reduce(0) { $0 + ($1 - meanX) * ($1 - meanX) }
-        guard den > 0 else { return nil }
-        let slopePerSecond = num / den
-        return slopePerSecond * 365 * 24 * 3600
-    }
-
-    /// 从当前健康度衰减到 80% 需要的月份数
-    private var monthsUntil80: Double? {
-        guard let latest = latestHealth,
-              let decline = declinePerYear,
-              decline < -0.1,
-              latest > 80 else { return nil }
-        return (latest - 80) / abs(decline) * 12
-    }
-
-    // MARK: - 汇总卡
-
-    private var summaryCard: some View {
-        CardContainer(cornerRadius: 16,
-                      fillStyle: AnyShapeStyle(
-                          LinearGradient(colors: [.green.opacity(0.10), .white],
-                                         startPoint: .top, endPoint: .bottom))) {
-            VStack(alignment: .leading, spacing: 12) {
-                Label("电池寿命", systemImage: "battery.100")
-                    .font(.headline)
-                    .foregroundStyle(.green)
-
-                if let latest = latestHealth {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(String(format: "%.1f", latest))
-                            .font(.system(size: 40, weight: .bold, design: .rounded))
-                            .foregroundStyle(.green)
-                        Text("%")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                } else {
-                    Text("--")
-                        .font(.system(size: 40, weight: .bold, design: .rounded))
-                        .foregroundStyle(.secondary)
+    private func statusCard(_ forecast: LifetimeForecast) -> some View {
+        CardContainer {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Text(forecast.agingState)
+                        .font(.subheadline.bold())
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 5)
+                        .background(.green.opacity(0.15), in: Capsule())
+                        .foregroundStyle(.green)
+                    Text(forecast.trackBalance)
+                        .font(.subheadline.bold())
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 5)
+                        .background(.teal.opacity(0.15), in: Capsule())
+                        .foregroundStyle(.teal)
+                    Spacer()
                 }
-
-                if let months = monthsUntil80 {
-                    Text("按当前衰减速度，预计 \(Int(months.rounded())) 个月后降至 80%（\(latestText)）")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else if healthValues.count < 2 {
-                    Text("记录不足 2 条，暂无法外推。先导入分析日志积累记录。")
+                HStack(spacing: 6) {
+                    Image(systemName: "scalemass")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else if let decline = declinePerYear {
-                    if decline >= -0.1 {
-                        Text("近 30 天健康度基本稳定，按当前趋势不会在短期内跌破 80%。")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    } else {
-                        Text("当前健康度已低于 80%，请关注电池状态。")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-            }
-        }
-    }
-
-    private var latestText: String {
-        latestHealth.map { String(format: "%.1f%%", $0) } ?? "--"
-    }
-
-    // MARK: - 趋势卡
-
-    private var trendCard: some View {
-        CardContainer(cornerRadius: 16,
-                      fillStyle: AnyShapeStyle(.regularMaterial)) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("历史健康度")
-                        .font(.headline)
+                    Text(forecast.hint)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                     Spacer()
-                    if let decline = declinePerYear {
-                        Text("年衰减 \(String(format: "%.1f", decline))%")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
                 }
-
-                Chart {
-                    ForEach(Array(records.enumerated()), id: \.element.id) { index, record in
-                        if let value = healthValues[safe: index] {
-                            LineMark(
-                                x: .value("次序", index),
-                                y: .value("健康度", value)
-                            )
-                            .foregroundStyle(Color.green)
-                            .lineStyle(StrokeStyle(lineWidth: 2.5))
-                            .interpolationMethod(.monotone)
-                        }
-                    }
-                }
-                .chartXAxis(.hidden)
-                .chartYAxis(.hidden)
-                .chartYScale(domain: yDomain)
-                .frame(height: 150)
-
-                if let latest = latestHealth, let months = monthsUntil80 {
-                    HStack(spacing: 10) {
-                        Text(String(format: "%.1f%%", latest))
-                            .font(.system(size: 16, weight: .bold, design: .rounded))
-                            .foregroundStyle(.green)
-                        Text("当前")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Text("约 \(Int(months.rounded())) 个月后 80%")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                if let cpd = forecast.dailyCycleCount {
+                    Label(String(format: "%.2f 次/天", cpd), systemImage: "arrow.2.circlepath")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.primary)
                 }
             }
         }
     }
 
-    private var yDomain: ClosedRange<Double> {
-        let vals = healthValues
-        guard let min = vals.min(), let max = vals.max() else { return 80...100 }
-        let span = max(max - min, 1)
-        return max(0, min - span * 0.5)...min(100, max + span * 0.5)
-    }
+    // MARK: 里程碑（跌到 80% / 90% 的预估时间，并排两卡）
 
-    /// 计算健康度：额定容量 ÷ 出厂容量 × 100%（不再显示系统健康度）
-    private func recordHealth(_ record: HealthRecord) -> Double? {
-        if let analytics = vm.analyticsRecords.first(where: { Calendar.current.isDate($0.date, inSameDayAs: record.date) }),
-           let nominal = analytics.nominalChargeCapacity,
-           let design = analytics.designCapacity ?? DeviceBatterySpec.current?.factoryCapacity,
-           design > 0 {
-            return Double(nominal) / Double(design) * 100
+    private func milestoneRow(_ forecast: LifetimeForecast) -> some View {
+        HStack(spacing: 12) {
+            milestoneCard(target: 80, months: forecast.monthsUntil80)
+            milestoneCard(target: 90, months: forecast.monthsUntil90)
         }
-        return record.maximumCapacity
     }
-}
 
-extension Array {
-    subscript(safe index: Int) -> Element? {
-        indices.contains(index) ? self[index] : nil
+    private func milestoneCard(target: Int, months: Double?) -> some View {
+        CardContainer {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("跌到 \(target)% 的预估时间")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Text(months.map { BatteryAnalytics.durationText($0) } ?? "继续记录")
+                    .font(.title2.bold())
+                    .foregroundStyle(.green)
+            }
+        }
+    }
+
+    // MARK: 免责提示
+
+    private var disclaimer: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "info.circle")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Text("数据虽是基于算法做出预测，但结果仅供参考！")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(.horizontal, 4)
+    }
+
+    // MARK: 未来预测（1 / 3 / 6 个月容量保留）
+
+    private func futureCard(_ forecast: LifetimeForecast) -> some View {
+        CardContainer {
+            VStack(spacing: 0) {
+                sectionHeader("未来预测")
+                if let future = forecast.futureRetentions {
+                    ForEach(future, id: \.months) { item in
+                        Divider()
+                        HStack {
+                            Text("\(item.months) 个月")
+                                .font(.subheadline)
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            Text(String(format: "%.1f%%", item.retention))
+                                .font(.subheadline.bold())
+                                .foregroundStyle(.green)
+                        }
+                        .padding(.vertical, 9)
+                    }
+                } else {
+                    Text("继续记录数据后可预测")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, 12)
+                }
+            }
+        }
+    }
+
+    // MARK: 双轨损耗分析（自然老化 / 循环磨损）
+
+    private func wearCard(_ forecast: LifetimeForecast) -> some View {
+        CardContainer {
+            VStack(spacing: 10) {
+                sectionHeader("双轨损耗分析")
+                HStack(alignment: .top, spacing: 12) {
+                    wearColumn(title: "自然老化", value: forecast.naturalLossPerDay)
+                    wearColumn(title: "循环磨损", value: forecast.cycleLossPerDay)
+                }
+                Divider()
+                HStack(spacing: 6) {
+                    Image(systemName: "scalemass")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Text(forecast.hint)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                if let cpd = forecast.dailyCycleCount {
+                    Label(String(format: "%.2f 次/天", cpd), systemImage: "arrow.2.circlepath")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.primary)
+                }
+            }
+        }
+    }
+
+    private func wearColumn(title: String, value: Double?) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Text(value.map { String(format: "%.2f mAh/天", $0) } ?? "--")
+                .font(.subheadline.bold())
+                .foregroundStyle(.primary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: 依据说明（可展开）
+
+    private var basisCard: some View {
+        CardContainer {
+            VStack(spacing: 10) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { showBasis.toggle() }
+                } label: {
+                    HStack {
+                        Text("这个数据的依据是什么？")
+                            .font(.subheadline.bold())
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Image(systemName: "chevron.down")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .rotationEffect(.degrees(showBasis ? 180 : 0))
+                    }
+                }
+                .buttonStyle(.plain)
+
+                if showBasis {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("预测基于你已记录的数据做线性外推，口径如下：")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        basisRow("每日循环次数", "总循环次数 ÷ 已使用天数（自首次使用日起）")
+                        basisRow("容量衰减速率", "健康度月衰减 × 额定容量 ÷ 30 天")
+                        basisRow("自然老化", "总衰减 − 循环磨损（每次循环按额定容量 0.02% 估算）")
+                        basisRow("循环磨损", "每次循环损耗 × 每日循环次数")
+                        basisRow("未来保留率", "当前容量 − 月衰减 × 月数，再除以额定容量")
+                        Text("数据点越多，预测越稳；样本仅 1~2 条时结果波动大，仅供参考。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.top, 4)
+                }
+            }
+        }
+    }
+
+    private func basisRow(_ title: String, _ detail: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text(title)
+                .font(.footnote.bold())
+                .foregroundStyle(.primary)
+                .frame(width: 88, alignment: .leading)
+            Text(detail)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+    }
+
+    // MARK: 通用小组件
+
+    private func sectionHeader(_ text: String) -> some View {
+        HStack {
+            Text(text)
+                .font(.headline)
+            Spacer()
+        }
+        .padding(.bottom, 2)
     }
 }
