@@ -15,10 +15,12 @@ final class DataStore: ObservableObject {
     @Published private(set) var healthRecords: [HealthRecord] = []
     @Published private(set) var analyticsRecords: [AnalyticsRecord] = []
 
-    private static let kSamples   = "bi.samples"
-    private static let kSessions  = "bi.sessions"
-    private static let kHealth    = "bi.health"
-    private static let kAnalytics = "bi.analytics"
+    // key 常量必须 nonisolated：nonisolated static write() 在后台队列执行，
+    // 若 key 是 main-actor-isolated static let，Swift 6 严格并发会拒绝跨 actor 引用
+    private nonisolated static let kSamples   = "bi.samples"
+    private nonisolated static let kSessions  = "bi.sessions"
+    private nonisolated static let kHealth    = "bi.health"
+    private nonisolated static let kAnalytics = "bi.analytics"
     /// 采样上限，超出后丢弃最旧数据，避免无限增长
     private let sampleCap = 20000
     /// P0-1：落盘状态。变更只标记 dirty，达到最小间隔才真正编码写入，
