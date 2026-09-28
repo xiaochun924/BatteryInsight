@@ -368,7 +368,7 @@ struct RecordDetailView: View {
             .padding(.bottom, 2)
     }
 
-    /// 一行：图标 + 名称 + 数值（长按可复制，iOS 16+ 原生 .copyable，替代 UIPasteboard 按钮）
+    /// 一行：图标 + 名称 + 数值（长按选择即可复制，替代 UIPasteboard 按钮）
     private func row(_ title: String, valueText: String, tint: Color, caption: String? = nil) -> some View {
         HStack(spacing: 10) {
             Rectangle()
@@ -397,11 +397,11 @@ struct RecordDetailView: View {
                 .font(.subheadline.bold())
                 .monospacedDigit()
                 .multilineTextAlignment(.trailing)
-                // API-1：复制改用 SwiftUI 原生 .copyable（iOS 16+）——
-                // 长按/选择即弹「复制」，省掉 UIPasteboard 按钮 + copiedText 状态；
-                // 顺带给 VoiceOver 一个「拷贝」动作。
-                // 注意：copyable 的 content 参数是 Text（不是 String）
-                .copyable(Text(valueText))
+                // API-1：复制改用 SwiftUI 原生能力，替代 UIPasteboard 按钮 + copiedText 状态。
+                // 用 .textSelection(.enabled)：长按选择数值即弹系统「拷贝」，API 自 iOS 15 稳定。
+                // 不用 .copyable(Text) —— iOS 26 的 copyable 签名已改为数组/闭包版
+                // Transferable（String/Text 直传会编译失败），textSelection 语义等价且无歧义。
+                .textSelection(.enabled)
         }
         .padding(.vertical, 1)
     }
@@ -580,8 +580,8 @@ private struct UsageDetailSheet: View {
                 .font(.subheadline.bold())
                 .monospacedDigit()
                 .multilineTextAlignment(.trailing)
-                // copyable 参数是 Text（iOS 16+），String 不能隐式转换
-                .copyable(Text(value))
+                // 与详情页一致：长按选择复制（替代 UIPasteboard 按钮）
+                .textSelection(.enabled)
         }
     }
 }
