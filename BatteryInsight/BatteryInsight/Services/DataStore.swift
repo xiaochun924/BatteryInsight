@@ -21,16 +21,30 @@ final class DataStore: ObservableObject {
     private let kAnalytics = "bi.analytics"
     /// 采样上限，超出后丢弃最旧数据，避免无限增长
     private let sampleCap = 20000
+    /// 是否有待落盘的脏数据（采样 15s 一条，不每次都全量 encode，见 P0-1）
+    private var dirty = false
 
     private init() { load() }
 
     // MARK: - 采样
 
+    /// P0-1：采样每 15 秒一条，samples 上限 20000 条——每次都主线程全量 JSON 编码
+    /// 会把 App 越用越卡。这里只改内存数组并标记脏数据，真正的落盘推迟到退后台
+    /// （BatteryInsightApp 的 scenePhase 回调调 flushIfNeeded）或其它低频关键动作。
+    /// 电量采样丢失 15 秒对用户无感知，实时性不敏感。
     func addSample(_ s: BatterySample) {
         samples.append(s)
         if samples.count > sampleCap {
             samples.removeFirst(samples.count - sampleCap)
         }
+        dirty = true
+    }
+
+    /// 把积压的采样一次性落盘（退后台 / 关键节点调用）。
+    /// 此时是后台时机，一次性 encode 20000 条的几毫秒~几百毫秒阻塞用户无感。
+    func flushIfNeeded() {
+        guard dirty else { return }
+        dirty = false
         save()
     }
 
@@ -147,6 +161,8 @@ final class DataStore: ObservableObject {
         if let d = try? enc.encode(sessions)        { UserDefaults.standard.set(d, forKey: kSessions) }
         if let d = try? enc.encode(healthRecords)   { UserDefaults.standard.set(d, forKey: kHealth) }
         if let d = try? enc.encode(analyticsRecords){ UserDefaults.standard.set(d, forKey: kAnalytics) }
+        // 全量落盘完成，清掉采样脏标记
+        dirty = false
     }
 
     private func load() {
