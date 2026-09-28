@@ -8,7 +8,9 @@ import SwiftUI
 ///   - 「发热」：系统发热状态 / 热力图 / 温度传感器（ThermalView）
 ///   - 「适配器」：USB-PD 握手 / 供电档位 / 实时供电轨（AdapterView）
 struct RootView: View {
-    @StateObject private var vm = BatteryViewModel()
+    /// API-2：@Observable 视图用 @State 持有（替代 @StateObject），
+    /// 向下注入用 .environment(vm)（替代 .environmentObject(vm)）
+    @State private var vm = BatteryViewModel()
     @Environment(\.scenePhase) private var scenePhase
     /// 从「文件」App / 分享菜单用本 App 打开日志后的解析结果
     @State private var showingOpenResult = false
@@ -59,7 +61,7 @@ struct RootView: View {
         }
         // iOS 26 官方 Tab 栏最小化行为：内容向下滚动时 Tab 栏自动收成一条胶囊
         .tabBarMinimizeBehavior(.onScrollDown)
-        .environmentObject(vm)
+        .environment(vm)
         .onChange(of: scenePhase) { _, phase in
             // 后台期间定时器被系统挂起，回到前台立即补一次刷新
             if phase == .active { vm.refresh() }
