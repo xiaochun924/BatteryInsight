@@ -6,8 +6,7 @@ import SwiftUI
 /// 连接后显示 实际功耗 vs 额定功率 / 握手信息 / 供电档位 / 实时供电轨 /
 /// 线缆与连接。数据来自 USB-PD 握手（IOKit）与 HID 电源传感器。
 struct AdapterView: View {
-    /// API-2：@Observable 环境注入（替代 @EnvironmentObject）
-    @Environment(BatteryViewModel.self) private var vm
+    @EnvironmentObject private var vm: BatteryViewModel
     /// MiniWatts 实时监控引擎（@Observable，每秒一个 tick）
     @State private var power = PowerMonitor()
 
