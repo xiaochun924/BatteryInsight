@@ -12,7 +12,8 @@ import SwiftUI
 ///   - USB-PD 适配器信息与线缆损耗评估
 /// 模拟器 / 读不到传感器时显示 "--"，不估算假数据。
 struct ChargingPowerView: View {
-    @EnvironmentObject private var vm: BatteryViewModel
+    /// API-2：@Observable 环境注入（替代 @EnvironmentObject）
+    @Environment(BatteryViewModel.self) private var vm
     /// MiniWatts 实时监控引擎（@Observable，每秒一个 tick）
     @State private var power = PowerMonitor()
 
