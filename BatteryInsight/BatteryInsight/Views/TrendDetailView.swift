@@ -9,7 +9,8 @@ import Charts
 /// - 趋势分析数据：时间跨度 / 数据点数量 / 健康度变化 / 容量变化 / 平均·最高·最低
 /// 竞品截图中无真实数据源的项目（电池周报 / 月报）不实现。
 struct TrendDetailView: View {
-    @EnvironmentObject private var vm: BatteryViewModel
+    /// API-2：@Observable 环境注入（替代 @EnvironmentObject）
+    @Environment(BatteryViewModel.self) private var vm
 
     @State private var showingLifetime = false
     @Environment(\.dismiss) private var dismiss
