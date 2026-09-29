@@ -56,8 +56,9 @@ enum DocumentPickerLauncher {
 /// Swift 6：UIKit 委托回调运行在主线程，标记 @MainActor 满足严格并发。
 @MainActor
 private final class PickerDelegate: NSObject, UIDocumentPickerDelegate {
-    /// 关联对象 key。let 而非 var：地址恒定即可，不需要可变存储。
-    static let associatedKey: UInt8 = 0
+    /// 关联对象 key。必须是 `var`：`objc_setAssociatedObject` 的 key 参数是
+    /// `UnsafeRawPointer`，`&associatedKey` 取址要求可变存储（let 会编译报错）。
+    static var associatedKey: UInt8 = 0
 
     let onPick: @MainActor ([URL]) -> Void
     let onCancel: (@MainActor () -> Void)?

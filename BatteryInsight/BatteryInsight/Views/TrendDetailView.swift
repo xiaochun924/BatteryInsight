@@ -85,7 +85,7 @@ struct TrendDetailView: View {
     /// 收 `records` 参数而非直接读 `vm`：body 顶部算一次后传参给卡片，
     /// 避免每次渲染重复排序（`monthsUntil80` 内部 2 次排序 + 这里又 1 次）。
     private static func agingSummary(records: [HealthRecord]) -> String? {
-        guard let latest = records.sorted { $0.date < $1.date }.last,
+        guard let latest = records.sorted(by: { $0.date < $1.date }).last,
               let months = BatteryAnalytics.monthsUntil80(records: records) else { return nil }
         let state = (BatteryAnalytics.healthDeclinePerMonth(records) ?? 0) <= 1.0 ? "正常老化" : "老化偏快"
         if months >= 12 {
