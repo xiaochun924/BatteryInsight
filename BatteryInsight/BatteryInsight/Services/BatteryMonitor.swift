@@ -30,17 +30,23 @@ final class BatteryMonitor: ObservableObject {
 
         // Swift 6：`.receive(on: RunLoop.main)` 保证回调发生在主 RunLoop，
         // 但编译器仍视为非隔离闭包，访问 @MainActor 的 self 需显式跳回主线程。
+        // 用 `Task { @MainActor }` 而非 `assumeIsolated`：后者是硬断言，
+        // 系统若改变调度线程会直接崩溃；Task 是安全的主线程跳转。
         NotificationCenter.default.publisher(for: UIDevice.batteryLevelDidChangeNotification)
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
-                MainActor.assumeIsolated { self?.capture(reason: .system) }
+                Task { @MainActor [weak self] in
+                    self?.capture(reason: .system)
+                }
             }
             .store(in: &bag)
 
         NotificationCenter.default.publisher(for: UIDevice.batteryStateDidChangeNotification)
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
-                MainActor.assumeIsolated { self?.capture(reason: .system) }
+                Task { @MainActor [weak self] in
+                    self?.capture(reason: .system)
+                }
             }
             .store(in: &bag)
     }
@@ -48,10 +54,12 @@ final class BatteryMonitor: ObservableObject {
     func start() {
         capture(reason: .launch)
         timer?.invalidate()
-        // Timer 的 block 是 @Sendable，会在主 RunLoop 触发，但编译器按非隔离对待，
-        // 因此这里用 assumeIsolated 在主线程上执行采样（Timer 本就调度在主线程）。
+        // Timer 的 block 是 @Sendable，会在主 RunLoop 触发，但编译器按非隔离对待；
+        // 用 Task { @MainActor } 安全跳回主线程采样（同上，避免 assumeIsolated 硬断言）
         timer = Timer.scheduledTimer(withTimeInterval: samplingInterval, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.capture(reason: .timer) }
+            Task { @MainActor [weak self] in
+                self?.capture(reason: .timer)
+            }
         }
     }
 

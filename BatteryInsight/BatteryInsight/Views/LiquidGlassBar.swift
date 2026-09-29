@@ -35,7 +35,7 @@ struct GlassTopBar<Leading: View, Trailing: View>: View {
                 // 随 Dynamic Type 缩放，VoiceOver 大字模式下不截断
                 Text(title)
                     .font(.headline)
-                    .foregroundColor(.primary)
+                    .foregroundStyle(.primary)
                     .lineLimit(1)
                     .padding(.horizontal, 20)
                     .frame(height: 40)
@@ -78,7 +78,7 @@ struct GlassCircleButton: View {
         Button(action: action) {
             Image(systemName: icon)
                 .font(.system(size: 17, weight: .semibold))
-                .foregroundColor(tint)
+                .foregroundStyle(tint)
                 .frame(width: size, height: size)
                 .glassEffect(.regular.interactive(), in: .circle)
                 // iOS 26 按钮可点击区域默认只覆盖内容（图标本身），

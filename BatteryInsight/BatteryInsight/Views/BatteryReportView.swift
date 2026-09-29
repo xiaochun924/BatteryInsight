@@ -15,6 +15,11 @@ struct BatteryReportView: View {
     }
 
     @State private var kind: ReportKind = .weekly
+    /// P2-2：report 计算属性每次 body 求值都会重跑 makeReport（内部 3 次
+    /// filter + 3 次 sort）；记录量大时切周期/滚动会重复计算。
+    /// 按 kind 记忆缓存，仅周期切换时重算一次。
+    @State private var cachedKind: ReportKind?
+    @State private var cachedReport: BatteryReport?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -41,12 +46,19 @@ struct BatteryReportView: View {
     }
 
     private var report: BatteryReport {
-        BatteryAnalytics.makeReport(
+        // 同一周期内复用上次结果；切周报/月报时缓存失效重算一次
+        if let cachedReport, cachedKind == kind {
+            return cachedReport
+        }
+        let made = BatteryAnalytics.makeReport(
             kind: kind.rawValue,
             health: vm.healthRecords,
             analytics: vm.analyticsRecords,
             samples: vm.samples,
             sessions: vm.sessions)
+        cachedKind = kind
+        cachedReport = made
+        return made
     }
 
     @ViewBuilder

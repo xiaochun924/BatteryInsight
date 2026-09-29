@@ -81,11 +81,13 @@ struct TrendDetailView: View {
         return (values.reduce(0, +) / Double(values.count), values.max() ?? 0, values.min() ?? 0)
     }
 
-    /// 老化状态卡文案（与主页趋势卡一致口径）
-    private var agingSummary: String? {
-        guard let latest = sortedHealth.last,
-              let months = BatteryAnalytics.monthsUntil80(records: vm.healthRecords) else { return nil }
-        let state = (BatteryAnalytics.healthDeclinePerMonth(vm.healthRecords) ?? 0) <= 1.0 ? "正常老化" : "老化偏快"
+    /// 老化状态卡文案（与主页趋势卡一致口径）。
+    /// 收 `records` 参数而非直接读 `vm`：body 顶部算一次后传参给卡片，
+    /// 避免每次渲染重复排序（`monthsUntil80` 内部 2 次排序 + 这里又 1 次）。
+    private static func agingSummary(records: [HealthRecord]) -> String? {
+        guard let latest = records.sorted { $0.date < $1.date }.last,
+              let months = BatteryAnalytics.monthsUntil80(records: records) else { return nil }
+        let state = (BatteryAnalytics.healthDeclinePerMonth(records) ?? 0) <= 1.0 ? "正常老化" : "老化偏快"
         if months >= 12 {
             let years = Int(months) / 12
             let rest = Int(months) % 12
@@ -102,9 +104,12 @@ struct TrendDetailView: View {
         let capacityPoints = self.capacityPoints
         let chartHealth = Array(healthPoints.suffix(recentCount))
         let chartCapacity = Array(capacityPoints.suffix(recentCount))
+        // N-2：老化文案含 4 次排序（latest + monthsUntil80 内 2 次 + decline 1 次），
+        // body 顶部只算一次，传给卡片，避免每次渲染重排
+        let agingText = Self.agingSummary(records: vm.healthRecords)
         ScrollView {
             VStack(spacing: 16) {
-                agingCard
+                agingCard(summary: agingText)
                 healthTrendCard(points: chartHealth)
                 capacityTrendCard(points: chartCapacity)
                 statsCard(healthPoints: healthPoints, capacityPoints: capacityPoints)
@@ -126,12 +131,12 @@ struct TrendDetailView: View {
 
     // MARK: - 老化状态卡
 
-    private var agingCard: some View {
+    private func agingCard(summary: String?) -> some View {
         HStack(spacing: 10) {
             Image(systemName: "scalemass")
                 .font(.title3)
                 .foregroundStyle(.secondary)
-            if let summary = agingSummary {
+            if let summary {
                 Text(summary)
                     .font(.subheadline)
                     .foregroundStyle(.primary)

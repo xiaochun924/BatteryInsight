@@ -71,6 +71,9 @@ final class DataStore: ObservableObject {
         guard let idx = sessions.firstIndex(where: { $0.isActive }) else { return }
         if level > sessions[idx].peakLevel {
             sessions[idx].peakLevel = level
+            // N-3：峰值只改内存不落盘的话，退后台时 `needsSave == false`
+            // 会让 `flushNow` 直接跳过——App 被杀后本次峰值永久丢失
+            scheduleSave()
         }
     }
 

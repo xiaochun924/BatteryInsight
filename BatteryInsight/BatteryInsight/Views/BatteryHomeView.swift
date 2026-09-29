@@ -98,7 +98,7 @@ struct BatteryHomeView: View {
                     } label: {
                         Image(systemName: "ellipsis")
                             .font(.system(size: 17, weight: .semibold))
-                            .foregroundColor(.primary)
+                            .foregroundStyle(.primary)
                             .frame(width: 40, height: 40)
                             .glassEffect(.regular.interactive(), in: .circle)
                             .contentShape(Rectangle())
@@ -114,7 +114,7 @@ struct BatteryHomeView: View {
                         Button { openImport() } label: {
                             Text("分析")
                                 .font(.system(size: 15, weight: .semibold))
-                                .foregroundColor(.primary)
+                                .foregroundStyle(.primary)
                                 .padding(.horizontal, 14)
                                 .frame(height: 40)
                                 .glassEffect(.regular.interactive(), in: .capsule)
@@ -595,6 +595,9 @@ struct BatteryHomeView: View {
         // matchedTransitionSource 会按内容 bounds 收缩 Button 命中区，
         // 在 label 内声明 Rectangle() 才能覆盖撑满整行的空白区域
         .contentShape(Rectangle())
+        // P2-3：卡片合并为单个 VoiceOver 元素——不然健康%/循环/日期会被
+        // 拆成多个独立元素逐个朗读；combine 后读成「健康 101.60%、循环 91 次、9月24日」一句
+        .accessibilityElement(children: .combine)
     }
 
     /// 当天亮屏时长文案：「X时Y分」—— 文件抓取到的当天亮屏累计时长

@@ -56,7 +56,8 @@ enum DocumentPickerLauncher {
 /// Swift 6：UIKit 委托回调运行在主线程，标记 @MainActor 满足严格并发。
 @MainActor
 private final class PickerDelegate: NSObject, UIDocumentPickerDelegate {
-    static var associatedKey: UInt8 = 0
+    /// 关联对象 key。let 而非 var：地址恒定即可，不需要可变存储。
+    static let associatedKey: UInt8 = 0
 
     let onPick: @MainActor ([URL]) -> Void
     let onCancel: (@MainActor () -> Void)?
@@ -70,13 +71,15 @@ private final class PickerDelegate: NSObject, UIDocumentPickerDelegate {
     func documentPicker(_ controller: UIDocumentPickerViewController,
                         didPickDocumentsAt urls: [URL]) {
         controller.dismiss(animated: true) { [onPick] in
-            MainActor.assumeIsolated { onPick(urls) }
+            // dismiss 的 completion 由 UIKit 在主线程派发，但编译器按非隔离闭包
+            // 处理；用 Task { @MainActor } 跳回，避免 assumeIsolated 硬断言
+            Task { @MainActor [onPick] in onPick(urls) }
         }
     }
 
     func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
         controller.dismiss(animated: true) { [onCancel] in
-            MainActor.assumeIsolated { onCancel?() }
+            Task { @MainActor [onCancel] in onCancel?() }
         }
     }
 }
