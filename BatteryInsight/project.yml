@@ -22,7 +22,6 @@ targets:
         UILaunchScreen:
           UIColorName: ""
           UIImageRespectsSafeAreaInsets: false
-        UIRequiresFullScreen: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         UISupportedInterfaceOrientations~ipad:
