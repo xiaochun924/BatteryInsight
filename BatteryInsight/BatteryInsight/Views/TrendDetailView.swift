@@ -180,18 +180,11 @@ struct TrendDetailView: View {
             .frame(height: 200)
         }
         .padding(14)
-        // 淡绿渐变卡底（告别纯白单调）：左上淡绿 → 右下白，与绿色折线/面积呼应；
-        // 起始绿浓度调淡（0.10 → 0.05）：0.10 在真机上整页发绿
-        .background {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [Color.green.opacity(0.05), Color(.secondarySystemGroupedBackground)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-        }
+        // 中性卡底（与老化卡/统计卡一致）：绿渐变卡底在真机上会把整个页面
+        // 背景染绿（LinearGradient 起始色大面积渲染），绿色只保留在图表内部
+        // （折线 + 面积 + 胶囊），卡底回归系统次级分组色
+        .background(Color(.secondarySystemGroupedBackground),
+                    in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(.separator.opacity(0.4), lineWidth: 1)
@@ -218,17 +211,9 @@ struct TrendDetailView: View {
             .frame(height: 200)
         }
         .padding(14)
-        // 与健康度卡一致的淡绿渐变卡底 + 细描边（浓度同为 0.05，避免整页发绿）
-        .background {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [Color.green.opacity(0.05), Color(.secondarySystemGroupedBackground)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-        }
+        // 与健康度卡一致的中性卡底 + 细描边（绿色只保留在图表内部）
+        .background(Color(.secondarySystemGroupedBackground),
+                    in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(.separator.opacity(0.4), lineWidth: 1)
