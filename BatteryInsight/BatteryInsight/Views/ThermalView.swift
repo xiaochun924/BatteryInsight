@@ -7,7 +7,7 @@ import SwiftUI
 /// 数据来自实时电源传感器引擎（HID/IOKit），模拟器上无传感器时显示说明。
 struct ThermalView: View {
     @EnvironmentObject private var vm: BatteryViewModel
-    @State private var power = PowerMonitor()
+    @State private var power = PowerMonitor.shared
 
     private var snapshot: PowerSnapshot { power.snapshot }
 

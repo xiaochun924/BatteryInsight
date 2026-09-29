@@ -21,6 +21,14 @@ nonisolated struct LiveSample: Identifiable, Hashable {
 @MainActor
 @Observable
 final class PowerMonitor {
+    /// 全局唯一引擎：三个传感器 Tab（充电功率/发热/适配器）共享同一份实例。
+    ///
+    /// 之前每个 Tab 各自 `@State private var power = PowerMonitor()`：每份实例
+    /// 都有独立的 1 秒 tick、独立的 `SensorProbe`（进程内第二个 HID client 全
+    /// 返回 NaN，见 `HIDSensors` 注释）、独立的 `SessionStore`（写同一个
+    /// `charge-sessions.json`，各自整体覆盖，会话历史会互相丢失）。
+    static let shared = PowerMonitor()
+
     // MARK: Published state
 
     private(set) var snapshot = PowerSnapshot()
@@ -114,6 +122,10 @@ final class PowerMonitor {
     private let store = SessionStore()
 
     private var task: Task<Void, Never>?
+    /// How many views currently want the tick running. Three sensor Tabs share the
+    /// one engine (`PowerMonitor.shared`), so one Tab disappearing must not cancel
+    /// the task while another Tab still shows readings: only the last pause stops it.
+    private var startCount = 0
     private var tick = 0
     private var lastSampleWrite: Date = .distantPast
     private var lastPersist: Date = .distantPast
@@ -172,6 +184,7 @@ final class PowerMonitor {
     // MARK: Lifecycle
 
     func start() {
+        startCount += 1
         guard task == nil else { return }
         task = Task { [weak self] in
             while let self, !Task.isCancelled {
@@ -191,6 +204,9 @@ final class PowerMonitor {
     /// resumed session reports honest totals and `integratedSeconds` records how much of
     /// the wall clock was actually watched.
     func pause() {
+        startCount -= 1
+        guard startCount <= 0 else { return }
+        startCount = 0
         task?.cancel()
         task = nil
         persist()

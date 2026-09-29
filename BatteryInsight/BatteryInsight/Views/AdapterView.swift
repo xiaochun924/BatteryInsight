@@ -7,8 +7,9 @@ import SwiftUI
 /// 线缆与连接。数据来自 USB-PD 握手（IOKit）与 HID 电源传感器。
 struct AdapterView: View {
     @EnvironmentObject private var vm: BatteryViewModel
-    /// MiniWatts 实时监控引擎（@Observable，每秒一个 tick）
-    @State private var power = PowerMonitor()
+    /// 共享实时监控引擎（@Observable，每秒一个 tick）——三个传感器 Tab 共用
+    /// `PowerMonitor.shared`：进程内只允许一个 HID client，且会话文件只由一份引擎写入。
+    @State private var power = PowerMonitor.shared
 
     private var snapshot: PowerSnapshot { power.snapshot }
 

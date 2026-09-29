@@ -386,15 +386,6 @@ struct BatteryHomeView: View {
                     y: .value(metric == .health ? "健康度" : "容量", point.value)
                 )
                 .foregroundStyle(Color.green)
-                // 每个数据点上方标数值胶囊；已限最近 7 次记录，点数 ≤ 7 全部标注，不会糊
-                .annotation(position: .top, spacing: 6) {
-                    Text(label(for: point.value, metric: metric))
-                        .font(.caption2.bold())
-                        .foregroundStyle(.green)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1)
-                        .background(.thinMaterial, in: Capsule())
-                }
             }
         }
         // Y 轴随数据自适应（截图布局）：健康度 100% 上下也能完整显示
@@ -402,6 +393,28 @@ struct BatteryHomeView: View {
         // 隐藏日期/数值刻度，只留干净折线 + 数值胶囊
         .chartXAxis(.hidden)
         .chartYAxis(.hidden)
+        // 数值胶囊用 chartOverlay 手动放置（与趋势分析页统一；`.annotation` 在
+        // iOS 26 真机的部分容器内不渲染，统一实现避免换容器后胶囊消失）
+        .chartOverlay { proxy in
+            GeometryReader { geometry in
+                ForEach(points, id: \.date) { point in
+                    if let plot = proxy.plotFrame,
+                       let px = proxy.position(forX: point.date),
+                       let py = proxy.position(forY: point.value) {
+                        // plotFrame 是 Anchor<CGRect>，用 geometry 解引用拿到 plot 区域
+                        let origin = geometry[plot].origin
+                        Text(label(for: point.value, metric: metric))
+                            .font(.caption2.bold())
+                            .foregroundStyle(.green)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(.thinMaterial, in: Capsule())
+                            .position(x: origin.x + px,
+                                      y: origin.y + py - 14)
+                    }
+                }
+            }
+        }
         .frame(height: 180)
         // 无障碍（A11Y-2）：图表是纯图像，对 VoiceOver 提供文字摘要，
         // 读屏用户也能知道趋势方向与幅度

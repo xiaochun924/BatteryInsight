@@ -13,8 +13,9 @@ import SwiftUI
 /// 模拟器 / 读不到传感器时显示 "--"，不估算假数据。
 struct ChargingPowerView: View {
     @EnvironmentObject private var vm: BatteryViewModel
-    /// MiniWatts 实时监控引擎（@Observable，每秒一个 tick）
-    @State private var power = PowerMonitor()
+    /// 共享实时监控引擎（@Observable，每秒一个 tick）——三个传感器 Tab 共用
+    /// `PowerMonitor.shared`：进程内只允许一个 HID client，且会话文件只由一份引擎写入。
+    @State private var power = PowerMonitor.shared
 
     private var snapshot: PowerSnapshot { power.snapshot }
     private var plugged: Bool { snapshot.externalConnected }
