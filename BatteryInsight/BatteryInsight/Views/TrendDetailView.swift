@@ -342,21 +342,10 @@ struct TrendDetailView: View {
         }
         return Chart {
             ForEach(points, id: \.date) { point in
-                // 折线下方的淡绿渐变面积（视觉层次，告别单调折线；与折线同色系，
-                // 顶部靠线处较深、向下渐隐，突出折线走势）
-                AreaMark(
-                    x: .value("日期", point.date),
-                    y: .value("值", point.value)
-                )
-                .interpolationMethod(.monotone)
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [Color.green.opacity(0.25), Color.green.opacity(0.02)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-
+                // 注意：不再画 AreaMark 面积渐变——iOS 26 真机上 LinearGradient
+                // 面积在 ScrollView 容器内会扩展到整个卡片区域，把页面染绿
+                // （两次真机反馈：卡底渐变移除后仍全绿）。只保留加粗折线 +
+                // 胶囊数值，页面干净且不单调。
                 LineMark(
                     x: .value("日期", point.date),
                     y: .value("值", point.value)
