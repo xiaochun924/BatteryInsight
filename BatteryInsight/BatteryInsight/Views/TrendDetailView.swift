@@ -181,12 +181,12 @@ struct TrendDetailView: View {
         }
         .padding(14)
         // 淡绿渐变卡底（告别纯白单调）：左上淡绿 → 右下白，与绿色折线/面积呼应；
-        // 附加一层极淡描边勾出卡片轮廓
+        // 起始绿浓度调淡（0.10 → 0.05）：0.10 在真机上整页发绿
         .background {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(
                     LinearGradient(
-                        colors: [Color.green.opacity(0.10), Color(.secondarySystemGroupedBackground)],
+                        colors: [Color.green.opacity(0.05), Color(.secondarySystemGroupedBackground)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
@@ -218,12 +218,12 @@ struct TrendDetailView: View {
             .frame(height: 200)
         }
         .padding(14)
-        // 与健康度卡一致的淡绿渐变卡底 + 细描边
+        // 与健康度卡一致的淡绿渐变卡底 + 细描边（浓度同为 0.05，避免整页发绿）
         .background {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(
                     LinearGradient(
-                        colors: [Color.green.opacity(0.10), Color(.secondarySystemGroupedBackground)],
+                        colors: [Color.green.opacity(0.05), Color(.secondarySystemGroupedBackground)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
