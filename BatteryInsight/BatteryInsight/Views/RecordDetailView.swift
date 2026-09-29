@@ -206,7 +206,9 @@ struct RecordDetailView: View {
                 if let v = factoryCapacity {
                     row("出厂容量", valueText: "\(v) mAh", tint: .green)
                 }
-                if nominalCapacity == nil && record.maximumCapacity == nil {
+                // maximumCapacity 非可选（手动录入必填）恒有值；
+                // 无日志数据时（nominalCapacity == nil）提示数据来源
+                if nominalCapacity == nil {
                     Text("该记录没有分析日志数据，只有手动录入的数值。")
                         .font(.footnote).foregroundStyle(.secondary)
                 }

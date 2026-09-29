@@ -901,9 +901,9 @@ enum AnalyticsLogParser {
     /// ⚠️ 小数秒位数在不同 iOS 版本上是 1~6 位都有（实测 `08:00:08.00` 是两位），
     /// 只写死 `.SSSS` / `.SSSSSS` 会全部匹配失败 → 日期回退成"导入时刻"，
     /// 所有记录挤在同一天，趋势图直接废掉。
-    /// Swift 6：`parse` 会被 `Task.detached` 在后台线程调用，静态 DateFormatter 缓存
-    /// 需显式 `nonisolated(unsafe)`（DateFormatter 内部有锁，实例只读，跨线程安全）。
-    private nonisolated(unsafe) static let dateFormatters: [DateFormatter] = {
+    /// Swift 6：`parse` 会被 `Task.detached` 在后台线程调用；iOS 26 SDK 已将
+    /// `DateFormatter` 标注为 Sendable，`static let` 常量无需 `nonisolated(unsafe)`。
+    private static let dateFormatters: [DateFormatter] = {
         let fractions = ["", ".S", ".SS", ".SSS", ".SSSS", ".SSSSS", ".SSSSSS"]
         let zones = ["Z", ""]
         var patterns: [String] = []

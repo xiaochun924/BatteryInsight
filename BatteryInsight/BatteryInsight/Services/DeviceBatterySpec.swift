@@ -92,7 +92,9 @@ enum DeviceBatterySpec {
         guard size > 0 else { return "" }
         var machine = [CChar](repeating: 0, count: size)
         sysctlbyname("hw.machine", &machine, &size, nil, 0)
-        return String(cString: machine)
+        // 截断 null 终止符后按 UTF-8 解码（String(cString:) 已弃用）
+        let bytes = machine.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
+        return String(decoding: bytes, as: UTF8.self)
     }
 
     /// 本机的出厂规格；机型不在表里时返回 nil（不猜）
